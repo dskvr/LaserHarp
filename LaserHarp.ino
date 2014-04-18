@@ -115,6 +115,8 @@ int cooldownPeriod = 60;
 int startupLast = millis();
 bool coolingDown = false;
 
+bool laserState[totalLasers];
+
 int lasers[totalLasers]; 
 		lasers[0] = PINS_LASER_ONE;
 		lasers[1] = PINS_LASER_TWO;
@@ -142,10 +144,12 @@ void setupLaser(){
 //*************** LASERS: TURN A LASER ON ***************//
 void laserOn(int laser){
 	digitalWrite(lasers[laser], HIGH);
+	laserState[laser] = true;
 }
 //*************** LASERS: TURN A LASER OFF  ***************//
 void laserOff(int laser){
 	digitalWrite(lasers[laser], LOW);
+	laserState[laser] = false;
 }
 //*************** LASERS: TURN ALL ON ***************//
 void lasersOn(){
@@ -225,6 +229,8 @@ int pinsRangeEcho[NUMBER_STRINGS];
 		pinsRangeEcho[6] = PINS_RANGE_ECHO_ONE;
 
 //*************** RANGE FINDERS: SETUP PINS FOR INPUT AND OUTPUT ***************//
+long rangeMillisSince[s], rangeMillisLast[s];
+
 void setupRange(){
 	for(int s=0;s<NUMBER_STRINGS;s++){
 		pinMode(pinsRangeTrigger, OUTPUT);
@@ -250,7 +256,51 @@ void pingRange(int s){
 /**************************************
 **
 
-PC = PHOTOCELLS
+SAFETY
+Without them the lasers are just pretty (and debateably dangerous)
+
+**
+***************************************/
+int stringTrigDur[NUMBER_STRINGS];
+int stringActivated[NUMBER_STRINGS];
+long safetyOn[NUMBER_STRINGS];
+int stringOn;
+
+#define SAFETY_LASER_DURATION  10000
+
+void safetySecond(int s, bool reset){
+	
+	int now = millis();
+	
+	if(stringTriggered[s] && laserState[s]) {
+		stringTrigDur[s] = now-stringActivated[s];
+	}	else if(!stringTriggered[s]) {
+		stringTrigDur[s] = 0;
+	}
+	
+	if(safetyOn[s]) {
+		if(now-safetyOn[s]>1*1000) { //Put it on after 1 second
+			if(now-safetyOn[s]>1*1000+5 && stringTriggered[s] && laserState[s]) laserOff(s); //Shortly after, check if there is something still obstructing the laser.
+			else laserOn(s); //First... turn the laser on
+			
+			if(now-safetyOn[s]>5*1000+100 && !stringTriggered[s] && laserState[s]){ //If the obstructure is no longer there, it continues as normal. 
+				laserOn(s);
+				safetyOn[s]=0;
+			}
+		} 
+	}
+	
+	if(stringTrigDur[s] > SAFETY_LASER_DURATION) {  //Something has blocked the laser for 10 seconds, turn on the Safety
+		laserOff(s); 
+		safetyOn[s] = now;
+	}
+}
+
+
+/**************************************
+**
+
+MODE
 Without them the lasers are just pretty (and debateably dangerous)
 
 **
@@ -276,7 +326,6 @@ void pollMode(){
 }
 
 //*************** Midi Config ***************//
-long rangeMillisSince, rangeMillisLast;
 
 void Midi_Send(byte cmd, byte data1, byte data2) {
   Serial.write(cmd);
@@ -338,10 +387,11 @@ void pollSensors(){
 		if( isStringActive(s) ) { //String has been tripped. 
 			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
 			setStringRange(s);
-			stringTriggered[s] = true;
 			tripped = true;
+			safetySecond(s, false);
 		} else {
 			stringTriggered[s] = false;
+			safetySecond(s, false);
 		}
 	}
 	//
@@ -373,22 +423,33 @@ int pinsPC[7];
 		
 boolean isStringActive(int s){
 	PCValues[s] = analogRead(pinsPC[s])
-	return ( PCValues[s] < LASER_PC_THRESH );
+	if(!stringActivated[s]) stringActivated[s] = millis();
+	bool result = ( PCValues[s] < LASER_PC_THRESH );
+	if(stringActivated[s] && !result) 	stringActivated[s] = 0;
+	else if(result) 										stringTriggered[s] = true;
+	return result;
 }
 
+int knobValuesCache;
+int knobPollEvery = 200;
+int knobPollLast = millis();
+
 void pollKnobs(){
-	int knobValuesCache = knobValues;
-	bool tripped = false;
-	for(int s=0;s<NUMBER_KNOBS;s++) {
-		knobValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
-	}
-	int note = (knobValues[0] != knobValuesCache[0] && tripped=true) ? NORMALIZE(knobValue[0], 0, 1024, 0, 12) : knobValuesCache[0];
-	int octave = (knobValues[1] != knobValuesCache[1] && tripped=true) ? NORMALIZE(knobValue[1], 0, 1024, 0, 12) : knobValuesCache[1];
-	int scale = (knobValues[2] != knobValuesCache[2] && tripped=true) ? NORMALIZE(knobValue[2], 0, 1024, 0, 12) : knobValuesCache[2];
+	int now = millis();
+	if(now-knobPollLast>knobPollEvery) {
+		bool tripped = false;
+		for(int s=0;s<NUMBER_KNOBS;s++) {
+			knobValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
+		}
+		int note = (knobValues[0] != knobValuesCache[0] && tripped=true) ? NORMALIZE(knobValue[0], 0, 1024, 0, 12) : knobValuesCache[0];
+		int octave = (knobValues[1] != knobValuesCache[1] && tripped=true) ? NORMALIZE(knobValue[1], 0, 1024, 0, 8) : knobValuesCache[1];
+		int scale = (knobValues[2] != knobValuesCache[2] && tripped=true) ? NORMALIZE(knobValue[2], 0, 1024, 0, 4) : knobValuesCache[2];
 	
-	if(tripped) {
-		setBaseNote(octave*12+note);
-		setScale();
+		if(tripped) {
+			setBaseNote(octave*12+note);
+			setHarpScale(scale);
+		}
+		knobValuesCache = knobValues;
 	}
 }
 
