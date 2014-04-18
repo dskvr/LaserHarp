@@ -1,147 +1,85 @@
 #include <Streaming.h>
-
-
-// Math Constants 
- //Dimensional
-
-
-
-//*************** PIN CONFIG ***************//
-
-struct SV {
-	int one;
-	int two;
-	int three;
-};
-
-struct SB {
-	boolean one;
-	boolean two;
-	boolean three;
-};
-
-//* PINS *//
-SV pinsLDR;
-SV pinsRangeEcho;
-SV pinsRangeTrigger;
-
-//* DATA CACHE *//
-SV stringRange;
-SV stringNote;
-SV stringDown;
-SV knobValues;
-SV holding;
-SV midiStage;
-
-//* VALUES *//
-SV ldrValues;
-SV rangeValues;
-
-SB buttonStatus;
-SB stringTriggeredCache;
-SB stringTriggered;
-
-//*************** Range Pins ***************//
-
-
-//*************** Knob Cache ***************//
-
-struct knobValues {
-	int one;
-	int two;
-};
-
-
-//*************** Harp Params ***************//
-
-int baseNote = 60;
-int harpScale = 0;
-
-//*************** RANGE PINS ***************//
-
-#define PINS_RANGE_ECHO_ONE 22
-#define PINS_RANGE_ECHO_TWO 24
-#define PINS_RANGE_ECHO_THREE 26
-
-#define PINS_RANGE_TRIG_ONE 23 // Trigger Pin
-#define PINS_RANGE_TRIG_TWO 25 // Trigger Pin
-#define PINS_RANGE_TRIG_THREE 27 // Trigger Pin
-
-//*************** LDR PINS ***************//
-
-#define PINS_LDR_ONE 8
-#define PINS_LDR_TWO 9 
-#define PINS_LDR_THREE 10
-
-//*************** MODE BUTTON PIN ***************//
-
-#define PINS_MODE 11
-
-//*************** LASER SWITCH PINS ***************//
-
-#define PINS_SWITCH_ONE 28
-#define PINS_SWITCH_TWO 30
-#define PINS_SWITCH_THREE 32
-
-//*************** Midi Config ***************//
-
-#define KNOB1  0
-#define KNOB2  1
-
-#define BUTTON1  2
-#define BUTTON2  3
-#define BUTTON3  4
-
-#define STAT1  7
-#define STAT2  6
-
+/*++++++++++++++++++++++++++++++++++++++++++++++++++
+Constraints
+//*************** LASER SWITCH PINS ***************/
+#DEFINE NUMBER_STRINGS = 7;
+#DEFINE NUMBER_SENSORS = 2;
+	#DEFINE NUMBER_RANGE_FINDERS = 2;
+	/*++++++++++++++++++++++++++++++++++++++++++++++++++
+	PINS PINS PINS
+	//*************** LASER SWITCH PINS ***************/
+	#define PINS_LASER_ONE 			28
+	#define PINS_LASER_TWO 			30
+	#define PINS_LASER_THREE 		32
+	//*************** STRING RANGE FINDERS ***************//
+	//								TRIGGER ***************//
+	#define PINS_RANGE_TRIG_ONE 	23 // Trigger Pin
+	#define PINS_RANGE_TRIG_TWO 	25 // Trigger Pin
+	//								ECHO ***************//
+	#define PINS_RANGE_ECHO_ONE 	22
+	#define PINS_RANGE_ECHO_TWO 	24
+	//*************** USERRANGE TRIG & ECHO ***************//
+	#define PINS_USER_RANGE_TRIG 	27
+	#define PINS_USER_RANGE_ECHO	26
+	//*************** PHOTOCELLS ***************//
+	#define PINS_PC_ONE 					8
+	#define PINS_PC_TWO 					9 
+	#define PINS_PC_THREE 				10
+	#define PINS_PC_FOUR 					8
+	#define PINS_PC_FIVE 					9 
+	#define PINS_PC_SIX		 				10
+	#define PINS_PC_SEVEN		 				10
+	//*************** KNOB PINS ***************//
+	#define PINS_KNOB_ONE 				0
+	#define PINS_KNOB_TWO  				1
+	#define PINS_KNOB_THREE  			2
+	//*************** MODE BUTTON PIN ***************//
+	#define PINS_MODE 						11
+/*++++++++++++++++++++++++++++++++++++++++++++++++++
+MIDI
+//*************** HELPERS ***************/
 #define OFF 1
 #define ON 2
 #define WAIT 3
 #define CONTINUOUS 11
-
 #define NOTEON 0x90
 #define NOTEOFF 0x80
-
+//*************** LIMITS ***************/
 #define MIDI_NOTE_LOW 0
 #define MIDI_NOTE_HIGH 115
-
-//*************** LDR CONFIG ***************//
-
-#define LASER_LDR_THRESH 600 //CHANGE!
-
-#define IDLE_THRESHOLD 30000
-
-#define TOTAL_MODES 3
-
-
-#define RANGE_MAX 114 //CHANGE!
-
-long rangeMillisSince, rangeMillisLast;
-	
-//Thresholds
-
-
+/*++++++++++++++++++++++++++++++++++++++++++++++++++
+RANGE
+//*************** LIMITS ***************/
+#define THRESHOLD_PING_RANGE	50
+/*++++++++++++++++++++++++++++++++++++++++++++++++++
+INTERACTIVITY
+//*************** LIMITS ***************/
+#define IDLE_THRESHOLD 				30000
+#define RANGE_MAX 						114 //CHANGE!
+#define LASER_PC_THRESH 			600 //CHANGE!
+#define TOTAL_MODES 					3
+#define DEFAULT_BASE_NOTE 		60
+#define DEFAULT_SCALE					0
+//*************** DATA CACHE ***************//
+int stringRange[NUMBER_STRINGS];
+int stringNote[NUMBER_STRINGS];
+int knobValues[NUMBER_STRINGS];
+int midiStage[NUMBER_STRINGS];
+int PCValues[NUMBER_STRINGS];
+int rangeValues[NUMBER_STRINGS];
+bool stringTriggered[NUMBER_STRINGS];
+bool holding[NUMBER_STRINGS];
+//*************** User Tracking ***************//
+long lastInteraction;
+int lastButtonState;
+boolean isIdle;
+boolean active = false;
 //*************** Midi Variables ***************//
-
+int action = ON; //1 =note off ; 2=note on ; 3= wait
 byte incomingByte;
 byte note;
 byte velocity;
 int pot;
-
-//*************** Midi Loopback Cache ***************//
-
-byte byte1;
-byte byte2;
-byte byte3;
-
-boolean active = false;
-
-//*************** User Tracking ***************//
-
-long lastInteraction;
-int lastButtonState;
-boolean isIdle; 
 
 // Mode Two Stuff
 int modeTwoCacheOne;
@@ -149,202 +87,174 @@ int modeTwoCacheTwo;
 int modeTwoCacheThree;
 int harmonicOne[8];
 int modeTwoPos = 0;
-
 int mode = 0; // 0 = harp, 1 = harp notes, 2 = sampler
 
-int action = ON; //1 =note off ; 2=note on ; 3= wait
-
 void setup() {
-	
-	lasersOn(200);
-
-	// setupLaser();	
 	setupRange();
-	// setupLDR();
-	//
-	// setupNotes();
 	setScale();
-	// setMode();
-	//
 	setupMidi();
-
-  //start serial with midi baudrate 31250
-  Serial.begin(31250);
-//  Serial.begin(9600);
-	
+  Serial.begin(31250);  //start serial with midi baudrate 31250
+	setupLaser();	
 }
 
-void loop () {
-	
-	// Midi_Send(0x90, 0x5A, 0x45);
-	// delay(100);
-	// Midi_Send(0x80, 0x5A, 0x45);
-	// delay(300);
-	
-	// if(analogRead(8) < 700) {
-	// 			Midi_Send(0x90, 0x5A, 0x45);
-	// 			// Midi_Send(0x90, (char) stringNote.one, (char) stringRange.one);
-	// 		} else {
-	// 			Midi_Send(0x80, 0x5A, 0x45);
-	// 			// Midi_Send(0x80, (char) stringNote.one, (char) stringRange.one);
-	// 		}
-	
-		// 
-		// //*************** Poll Inputs ***************//
-		// checkIdle();
-		pollSensors();
-		pollKnobs();
+void loop () {		
+		pollKnobs();   //Check for octave, key, scale, mode values
+		pollSensors(); //Check photocells and find range.
+		sendMidi();    //Send midi signal. 
+}
+/**************************************
+**
+LASERS
+with Sharks.
+**
+***************************************/
+int totalLasers = NUMBER_STRINGS;
+int cooldownLast = millis();
+int cooldownEvery = 60*10;
+int cooldownPeriod = 60;
+int startupLast = millis();
+bool coolingDown = false;
+
+int lasers[totalLasers]; 
+		lasers[0] = PINS_LASER_ONE;
+		lasers[1] = PINS_LASER_TWO;
+		lasers[2] = PINS_LASER_THREE;
+		lasers[3] = PINS_LASER_FOUR;
+		lasers[4] = PINS_LASER_FIVE;
+		lasers[5] = PINS_LASER_SIX;
+		lasers[6] = PINS_LASER_SEVEN;
 		
-		// // pollMode();
-		// // pollButtons();
-		// 
-		// //*************** Prepare 
-		// setScale();
-		// 
-		// //*************** Conditional Midi ***************//
-		// if(active) {
-		sendMidi(); 
-		// }
-		// 
-	//*************** MIDI OUT ***************//
-  
-	// pot = analogRead(0);
-	// 	  note = 40;  // convert value to value 0-127
-	// 	  if(button(BUTTON1) || button(BUTTON2) || button(BUTTON3))
-	// 	  {  
-	// 	    Midi_Send(0x90,note,0x45);
-	// 	    while(button(BUTTON1) || button(BUTTON2) || button(BUTTON3));
-	// 	  }
-	
-  //*************** MIDI LOOPBACK ******************//
-	//midiLoopback();
-
-  //*************** MIDI IN ***************//
-  // if (Serial.available() > 0) {
-  //   // read the incoming byte:
-  //   incomingByte = Serial.read();
-  // 
-  //   // wait for as status-byte, channel 1, note on or off
-  //   if (incomingByte== 144) // Note on
-  //   { 
-  //     action = OFF;
-  //   }
-  //   else if (incomingByte== 128) // Note off
-  //   { 
-  //     action = ON;
-  //   }
-  //   else if (note==0 && action != WAIT) // note on, wait for note value
-  //   { 
-  //     note=incomingByte;
-  //   }
-  //   else if (note!=0 && action != WAIT)  // velocity
-  //   { 
-  //     velocity=incomingByte;
-  //     if(action == ON){ 
-  //       Midi_Send(0x90,note,velocity); 
-  //     }
-  //     if(action == OFF){ 
-  //       Midi_Send(0x80,note,velocity); 
-  //     }
-  //     note=0;
-  //     velocity=0;
-  //     action=WAIT;
-  //   }
-  //   else{
-  //   }
-  // }
-
-}
-
-void checkIdle(){
-	boolean cacheIdle = isIdle;
-	int now = millis();
-	if(now - lastInteraction > IDLE_THRESHOLD) 
-		{ isIdle = true; }
-	else 
-		{ isIdle = false; } 
-
-	if(isIdle == true) {
-		lasersOff(999);
-	} else if (cacheIdle == true && isIdle == false) {
-		lasersOn(200);
+void startupLasers(){
+	for(int l = 0;l < totalLasers; l++) {
+		pinMode(lasers[l], OUTPUT);
 	}
-	
-}
-
-//
-// SETUP FUNCTIONS
-//
-void setupLaser(){
-	pinMode(PINS_SWITCH_ONE, OUTPUT);
-	pinMode(PINS_SWITCH_TWO, OUTPUT);
-	pinMode(PINS_SWITCH_THREE, OUTPUT);
-	
 	lasersOn(500);
 }
 
+void shutdownLasers(){
+	
+}
+
+void setupLaser(){
+	startupLasers();
+}
+
+//*************** LASERS: TURN A LASER ON ***************//
 void laserOn(int laser){
-	switch(laser) {
-		case 1 : digitalWrite(PINS_SWITCH_ONE, HIGH); break;
-		case 2 : digitalWrite(PINS_SWITCH_TWO, HIGH); break;
-		case 3 : digitalWrite(PINS_SWITCH_THREE, HIGH); break;		
-	}
+	digitalWrite(lasers[laser], HIGH);
 }
-
+//*************** LASERS: TURN A LASER OFF  ***************//
 void laserOff(int laser){
-	switch(laser) {
-		case 1 : digitalWrite(PINS_SWITCH_ONE, LOW); break;
-		case 2 : digitalWrite(PINS_SWITCH_TWO, LOW); break;
-		case 3 : digitalWrite(PINS_SWITCH_THREE, LOW); break;		
-	}
+	digitalWrite(lasers[laser], LOW);
 }
-
+//*************** LASERS: TURN ALL ON ***************//
 void lasersOn(){
-	for(int l = 0; l < 3; l++) {
+	for(int l = 0; l < totalLasers; l++) {
 		laserOn(l);
 	}
 }
-
+//*************** LASERS: TURN ALL ON WITH DELAY ***************//
 void lasersOn(int d){
-	for(int l = 0; l < 3; l++) {
+	for(int l = 0; l < totalLasers; l++) {
 		laserOn(l);
-		if(l != 2) { delay(d); }
+		delay(d);
 	}
 }
-
+//*************** LASERS: TURN ALL OFF ***************//
 void lasersOff(){
-	for(int l = 0; l < 3; l++) {
+	for(int l = 0; l < totalLasers; l++) {
 		laserOff(l); 
 	}
 }
 
+//*************** LASERS: TURN ALL OFF WITH DELAY ***************//
 void lasersOff(int d){
-	for(int l = 0; l < 3; l++) {
+	for(int l = 0; l < totalLasers; l++) {
 		laserOff(l);
-		if(l != 2) { delay(d); }
+		delay(d);
 	}
 }
 
-void setupRange(){
-	
-	// Setup Trigger Pins
-	pinMode(PINS_RANGE_TRIG_ONE, OUTPUT);
-	pinMode(PINS_RANGE_TRIG_TWO, OUTPUT);
-	pinMode(PINS_RANGE_TRIG_THREE, OUTPUT);
-	
-	// Setup input pins for strings.
-	pinMode(PINS_RANGE_ECHO_ONE, INPUT);
-	pinMode(PINS_RANGE_ECHO_TWO, INPUT);
-	pinMode(PINS_RANGE_ECHO_THREE, INPUT);	
-	
-	rangeMillisLast = millis();
+//*************** CHECK LASER COOLDOWN CYCLE  ***************//
+void checkCooldown(){
+	int now = millis();
+	if(now-cooldownLast > cooldownEvery && !coolingDown) {
+		//blink 3 times then cooldown
+		for(int blink=0;blink<3;blink++){
+			lasersOff( 20 );  delay(250);
+			lasersOn( 70 );   delay(500);
+		}
+	} elseif(now-startupLast > cooldownPeriod && coolingDown) {
+		lasersOn( 250 );
+	} else {
+		//do nothing
+	}
 }
 
-void setupLDR(){
-	// PINS_LDR_ONE = 8;
-	// pinsLDR.two = 9;
-	// pinsLDR.three = 10;
+void coolDown(){
+	
 }
+
+/**************************************
+**
+RANGE FINDER
+The tiny big section for most desired feature
+**
+***************************************/
+
+//*************** SETUP ***************//
+int rangeMillisLast[NUMBER_STRINGS];
+
+//*************** RANGE FINDERS: SETUP PINS ***************//
+int pinsRangeTrigger[NUMBER_STRINGS];
+		pinsRangeTrigger[0] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[1] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[2] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[3] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[4] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[5] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[6] = PINS_RANGE_TRIG_ONE;
+		
+int pinsRangeEcho[NUMBER_STRINGS];
+		pinsRangeEcho[0] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[1] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[2] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[3] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[4] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[5] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[6] = PINS_RANGE_ECHO_ONE;
+
+//*************** RANGE FINDERS: SETUP PINS FOR INPUT AND OUTPUT ***************//
+void setupRange(){
+	for(int s=0;s<NUMBER_STRINGS;s++){
+		pinMode(pinsRangeTrigger, OUTPUT);
+		pinMode(pinsRangeEcho, INPUT);
+		rangeMillisLast[s] = millis();
+	}
+}
+
+void pingRange(int s){
+	rangeMillisSince[s] = millis() - rangeMillisLast[s];
+	if(rangeMillisSince[s] > THRESHOLD_PING_RANGE) {
+		long duration;
+		digitalWrite(pinsRangeTrigger[s], LOW); 
+	 	delayMicroseconds(2); 
+	 	digitalWrite(pinsRangeTrigger[s], HIGH);
+	 	delayMicroseconds(10); 
+	 	digitalWrite(pinsRangeTrigger[s], LOW);
+	 	duration = pulseIn(pinsRangeEcho[s], HIGH);
+		rangeMillisLast[s] = millis();
+	}
+}
+
+/**************************************
+**
+
+PC = PHOTOCELLS
+Without them the lasers are just pretty (and debateably dangerous)
+
+**
+***************************************/
 
 void setupMode(){
 	pinMode(PINS_MODE, INPUT);
@@ -365,304 +275,121 @@ void pollMode(){
 	  lastButtonState = buttonState;
 }
 
-void setMode(){ 
-	mode = mode + 1;
-	if(mode >= TOTAL_MODES) { mode = 0; }
-	
-	if(mode == 1) {
-		modeTwoUpdate();
-	}
-}
+//*************** Midi Config ***************//
+long rangeMillisSince, rangeMillisLast;
 
-void modeTwoUpdate(){
-	
-	for(int n = 0; n < 8; n++) {
-		if(n == 0) {
-			modeTwoPos = stringNote.one;
-			harmonicOne[n] = modeTwoPos;
-		}
-
-		if(n == (1 || 3 || 4 || 7)) {
-			modeTwoPos = modeTwoPos + 2;
-			harmonicOne[n] = modeTwoPos;
-		}
-
-		if(n == (2 || 5 || 8)) {
-			modeTwoPos = modeTwoPos + 1;
-			harmonicOne[n] = modeTwoPos;
-		}
-	}
-	
-}
-
-void pingRangeSensors(){
-		
-	rangeMillisSince = millis() - rangeMillisLast;
-	if(rangeMillisSince > 50) {
-		long duration;
-	
-		// one
-		digitalWrite(PINS_RANGE_TRIG_ONE, LOW); 
-	 	delayMicroseconds(2); 
-	 	digitalWrite(PINS_RANGE_TRIG_ONE, HIGH);
-	 	delayMicroseconds(10); 
-	 	digitalWrite(PINS_RANGE_TRIG_ONE, LOW);
-	 	duration = pulseIn(PINS_RANGE_ECHO_ONE, HIGH);
-
-	 	//Calculate the distance (in cm) based on the speed of sound.
-	 	rangeValues.one = duration/58.2;
-		duration = 0;
-
-		// // two
-		// 		digitalWrite(PINS_RANGE_TRIG_TWO, LOW); 
-		// 	 	delayMicroseconds(2); 
-		// 	 	digitalWrite(PINS_RANGE_TRIG_TWO, HIGH);
-		// 	 	delayMicroseconds(10); 
-		// 	 	digitalWrite(PINS_RANGE_TRIG_TWO, LOW);
-		// 	 	duration = pulseIn(PINS_RANGE_ECHO_TWO, HIGH);
-		// 
-		// 	 	//Calculate the distance (in cm) based on the speed of sound.
-		// 	 	rangeValues.two = duration/58.2;
-		// 		duration = 0;
-		// 
-		// 		// three
-		// 		digitalWrite(PINS_RANGE_TRIG_THREE, LOW); 
-		// 	 	delayMicroseconds(2); 
-		// 	 	digitalWrite(PINS_RANGE_TRIG_THREE, HIGH);
-		// 	 	delayMicroseconds(10); 
-		// 	 	digitalWrite(PINS_RANGE_TRIG_THREE, LOW);
-		// 	 	duration = pulseIn(PINS_RANGE_ECHO_THREE, HIGH);
-		// 
-		// 	 	//Calculate the distance (in cm) based on the speed of sound.
-		// 	 	rangeValues.three = duration/58.2;
-	
-		rangeMillisLast = millis();
-	}
-}
-
-void setupMidi(){
-	
-	holding.one = false;
-	holding.two = false;
-	holding.three = false;
-	
-	pinMode(STAT1,OUTPUT);   
-  pinMode(STAT2,OUTPUT);
-
-  pinMode(BUTTON1,INPUT);
-  pinMode(BUTTON2,INPUT);
-  pinMode(BUTTON3,INPUT);
-
-  digitalWrite(BUTTON1,HIGH);
-  digitalWrite(BUTTON2,HIGH);
-  digitalWrite(BUTTON3,HIGH);
-
-  for(int i = 0;i < 10;i++) // flash MIDI Sheild LED's on startup
-  {
-    digitalWrite(STAT1,HIGH);  
-    digitalWrite(STAT2,LOW);
-    delay(30);
-    digitalWrite(STAT1,LOW);  
-    digitalWrite(STAT2,HIGH);
-    delay(30);
-  }
-
-  digitalWrite(STAT1,HIGH);   
-  digitalWrite(STAT2,HIGH);
-
-}
-
-void midiLoopback(){
-	// if(Serial.available() > 0)
-	//   {
-	//     byte1 = Serial.read();
-	//     byte2 = Serial.read();
-	//     byte3 = Serial.read();
-	// 
-	//     Midi_Send(byte1, byte2, byte3);
-	//   }
+void Midi_Send(byte cmd, byte data1, byte data2) {
+  Serial.write(cmd);
+  Serial.write(data1);
+  Serial.write(data2);
 }
 
 void sendMidi(){
 	
-	if(mode == 0) { 
+	switch( mode ){
 		
-		if(stringTriggered.one && !midiStage.one) {
-			// Midi_Send(NOTEON, stringNote.one, 69);
-			Midi_Send(NOTEON, stringNote.one, stringRange.one);
-			Midi_Send(0xB0, 17, stringRange.one);
-			midiStage.one = 1;
-			// Midi_Send(0x90, stringNote.one, 70);
-			stringTriggered.one = false;
-		} else if( !stringTriggered.one && midiStage.one ) { 
-			Midi_Send(NOTEOFF, stringNote.one, stringRange.one);
-			midiStage.one = 0;
-			// Midi_Send(0x80, stringNote.one, 70);
-		} else if(stringTriggered.one) {
-			midiStage.one = 2;
-			Midi_Send(0xB0, 17, stringRange.one);
-			// Midi_Send(NOTEON, stringNote.one, stringRange.one);
-		} 
-	
-		// if(stringTriggered.two && !midiStage.two) {
-		// 	// Midi_Send(NOTEON, stringNote.two, 69);
-		// 	Midi_Send(NOTEON, stringNote.two, stringRange.two);
-		// 	Midi_Send(0xB0, 2, stringRange.two);
-		// 	midiStage.two = 1;
-		// 	// Midi_Send(0x90, stringNote.two, 70);
-		// 	stringTriggered.two = false;
-		// } else if( !stringTriggered.two && midiStage.two ) { 
-		// 	Midi_Send(NOTEOFF, stringNote.two, stringRange.two);
-		// 	midiStage.two = 0;
-		// 	// Midi_Send(0x80, stringNote.two, 70);
-		// } else if(stringTriggered.two) {
-		// 	midiStage.two = 2;
-		// 	Midi_Send(0xB0, 2, stringRange.two);
-		// 	// Midi_Send(NOTEON, stringNote.two, stringRange.two);
-		// }
-		// 	
-		// if(stringTriggered.three && !midiStage.three) {
-		// 	// Midi_Send(NOTEON, stringNote.three, 69);
-		// 	Midi_Send(NOTEON, stringNote.three, stringRange.three);
-		// 	Midi_Send(0xB0, 3, stringRange.three);
-		// 	midiStage.three = 1;
-		// 	// Midi_Send(0x90, stringNote.three, 70);
-		// 	stringTriggered.three = false;
-		// } else if( !stringTriggered.three && midiStage.three ) { 
-		// 	Midi_Send(NOTEOFF, stringNote.three, stringRange.three);
-		// 	midiStage.three = 0;
-		// 	// Midi_Send(0x80, stringNote.three, 70);
-		// } else if(stringTriggered.three) {
-		// 	midiStage.three = 2;
-		// 	Midi_Send(0xB0, 3, stringRange.three);
-		// 	// Midi_Send(NOTEON, stringNote.one, stringRange.one);
-		// }
-	
-	} else if(mode == 1) {
-		
-		int rangeOne = NORMALIZE(stringRange.one, 0, RANGE_MAX, 0, 8);
-		
-		if(stringTriggered.one && !midiStage.one) {
-			// Midi_Send(NOTEON, stringNote.one, 69);
-			Midi_Send(NOTEON, harmonicOne[rangeOne], 69);
-			modeTwoCacheOne = rangeOne;
-			midiStage.one = 1;
-			// Midi_Send(0xB0, 17, stringRange.one);
-			// Midi_Send(0x90, stringNote.one, 70);
-			stringTriggered.one = false;
-		} else if( !stringTriggered.one && midiStage.one ) { 
-			Midi_Send(NOTEOFF, harmonicOne[rangeOne], 69);
-			Midi_Send(NOTEOFF, harmonicOne[modeTwoCacheOne], 69);
-			midiStage.one = 0;
-			// Midi_Send(0x80, stringNote.one, 70);
-		} else if(stringTriggered.one) {
-			if(modeTwoCacheOne != rangeOne) {
-				Midi_Send(NOTEOFF, harmonicOne[modeTwoCacheOne], 69);
-				Midi_Send(NOTEON, harmonicOne[rangeOne], 69);
+		case 1: //toggle
+			for(int s = 0; s < NUMBER_STRINGS; s__){
+				if(stringTriggered[s]) {
+					if(midiStage[s]) { //is presently off
+						Midi_Send(NOTEON, stringNote[s], stringRange[s]); 
+						Midi_Send(0xB0, 22+s, stringRange[s]); 
+						midiStage[s] = 1; //on
+					} else { //is presently on
+						Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
+						midiStage[s] = 0; //off
+					}
+				} else {
+					midiStage[s] = 2; //wait
+				}
 			}
-			midiStage.one = 2;
-			// Midi_Send(0xB0, 17, stringRange.one);
-			// Midi_Send(NOTEON, stringNote.one, stringRange.one);
-		}
-		
-	} else if(mode == 2) {
-		
+			break;
+		default: //momentary
+			for(int s = 0; s < NUMBER_STRINGS; s__){
+				if(stringTriggered[s] && !midiStage[s]) {
+					Midi_Send(NOTEON, stringNote[s], stringRange[s]);
+					Midi_Send(0xB0, 17, stringRange[s]);
+					midiStage[s] = 1;
+					// Midi_Send(0x90, stringNote.one, 70);
+					stringTriggered[s] = false;
+				} else if( !stringTriggered[s] && midiStage[s] ) { 
+					Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
+					midiStage[s] = 0;
+					// Midi_Send(0x80, stringNote.one, 70);
+				} else if(stringTriggered[s]) {
+					midiStage[s] = 2;
+					Midi_Send(0xB0, 17, stringRange[s]);
+					// Midi_Send(NOTEON, stringNote[s], stringRange[s]);
+				}
+			}
 	}
-	
-	// if(stringTriggered.two && !holding.two) {
-	// 	Midi_Send(0x90, (char) stringNote.two, (char) stringRange.two);
-	// 	stringTriggered.two = false;
-	// 	holding.two = true;
-	// }	else {
-	// 	if(holding.two) { 
-	// 		Midi_Send(0x80, (char) stringNote.two, (char) stringRange.two);
-	// 		holding.two = false;
-	// 	}
-	// }
-	// 
-	// if(stringTriggered.three && !holding.three) {
-	// 	Midi_Send(0x90, (char) stringNote.three, (char) stringRange.three);
-	// 	stringTriggered.three = false;
-	// 	holding.three = true;
-	// }	else {
-	// 	if(holding.one) { 
-	// 		Midi_Send(0x80, (char) stringNote.three, (char) stringRange.three);
-	// 		holding.three = false;
-	// 	}
-	// }
-
-	// while(stringTriggered.one || stringTriggered.two || stringTriggered.three );
-	
 }
 
-//**********************
+void setupMidi(){
+	for(int s=0;s>NUMBER_STRINGS;s++){ holding[s] = false; }
+}
 
-// Watchers
-
-// **** **** **********
+void midiLoopback(){ }
+		
 void pollSensors(){
-	
 	boolean tripped = false;
 	
-	pingRangeSensors();
-
-	if( ldrValues.one = analogRead(PINS_LDR_ONE) < LASER_LDR_THRESH ) { //String has been tripped. 
-		rangeValues.one = (rangeValues.one > RANGE_MAX) ? RANGE_MAX : rangeValues.one;
-		stringRange.one = NORMALIZE(rangeValues.one, 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
-		stringTriggered.one = true;
-		tripped = true;
-	} else {
-		stringTriggered.one = false;
+	for(int s=0;s<NUMBER_STRINGS;s++) {
+		if( isStringActive(s) ) { //String has been tripped. 
+			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
+			setStringRange(s);
+			stringTriggered[s] = true;
+			tripped = true;
+		} else {
+			stringTriggered[s] = false;
+		}
 	}
-	
-	if( ldrValues.two = analogRead(PINS_LDR_TWO) < LASER_LDR_THRESH ) { //String has been tripped. 
-		rangeValues.two = (rangeValues.two > RANGE_MAX) ? RANGE_MAX : rangeValues.two;
-		stringRange.two = NORMALIZE(rangeValues.two, 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
-		stringTriggered.two = true;
-		tripped = true;
-	} else {
-		stringTriggered.two = false;
-	}
-	
-	if( ldrValues.three = analogRead(PINS_LDR_THREE) < LASER_LDR_THRESH ) { //String has been tripped. 
-		rangeValues.three = (rangeValues.three > RANGE_MAX) ? RANGE_MAX : rangeValues.three;
-		stringRange.three = NORMALIZE(rangeValues.three, 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
-		stringTriggered.three = true;
-		tripped = true;
-	} else {
-		stringTriggered.three = false;
-	}
-	
-	// if( ldrValues.two = analogRead(pinsLDR.two) < LASER_LDR_THRESH ) {
-	// 	stringTriggered.two = true;
-	// 	stringRange.two = NORMALIZE(digitalRead(pinsRangeEcho.two), 0, RANGE_MAX, 1, 127);
-	// 	tripped = true;
-	// } else {
-	// 	stringTriggered.two = false;
-	// }
-	// 
-	// if( ldrValues.three = analogRead(pinsLDR.three) < LASER_LDR_THRESH ) {
-	// 	stringTriggered.three = true;
-	// 	stringRange.three = NORMALIZE(digitalRead(pinsRangeEcho.three), 0, RANGE_MAX, 1, 127);
-	// 	tripped = true;
-	// } else {
-	// 	stringTriggered.three = false;
-	// }
-	
+	//
 	if(tripped) 	{ active = true; lastInteraction = millis(); }
 	else 					{ active = false; }
-	
+	//
+}
+int setStringRange(int s){
+	stringRange[s] = getStringRange(s);
 }
 
-// void pollKnobs(){
-// 	knobValues.one = analogRead(KNOB1) / 8; // convert value to value 0-127
-// 	knobValues.two = analogRead(KNOB2) / 8; // convert value to value 0-127
-// }
+int getStringRange(int s){
+	rangeValues[s]=limitRange(rangeValues[s]);
+	return NORMALIZE(rangeValues[s], 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
+}
 
-void pollButtons(){
-	buttonStatus.one = button(BUTTON1);
-	buttonStatus.two = button(BUTTON2);
-	buttonStatus.three = button(BUTTON3);
+int limitRange(int range){
+	return (range > RANGE_MAX) ? RANGE_MAX : range;
+}
+
+int pinsPC[7];
+		pinsPC[0] = PINS_PC_ONE;
+		pinsPC[1] = PINS_PC_TWO;
+		pinsPC[2] = PINS_PC_THREE;
+		pinsPC[3] = PINS_PC_FOUR;
+		pinsPC[4] = PINS_PC_FIVE;
+		pinsPC[5] = PINS_PC_SIX;
+		pinsPC[6] = PINS_PC_SEVEN;
+		
+boolean isStringActive(int s){
+	PCValues[s] = analogRead(pinsPC[s])
+	return ( PCValues[s] < LASER_PC_THRESH );
+}
+
+void pollKnobs(){
+	int knobValuesCache = knobValues;
+	bool tripped = false;
+	for(int s=0;s<NUMBER_KNOBS;s++) {
+		knobValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
+	}
+	int note = (knobValues[0] != knobValuesCache[0] && tripped=true) ? NORMALIZE(knobValue[0], 0, 1024, 0, 12) : knobValuesCache[0];
+	int octave = (knobValues[1] != knobValuesCache[1] && tripped=true) ? NORMALIZE(knobValue[1], 0, 1024, 0, 12) : knobValuesCache[1];
+	int scale = (knobValues[2] != knobValuesCache[2] && tripped=true) ? NORMALIZE(knobValue[2], 0, 1024, 0, 12) : knobValuesCache[2];
+	
+	if(tripped) {
+		setBaseNote(octave*12+note);
+		setScale();
+	}
 }
 
 //*********************
@@ -671,38 +398,107 @@ void pollButtons(){
 
 // **** **** **********
 
+int baseNote = DEFAULT_BASE_NOTE;
+int harpScale = DEFAULT_SCALE;
+
 void setBaseNote(int n){
  baseNote = n;
 }
 
 void setHarpScale(char scale){
-	harpScale = 0;
+	harpScale = scale;
+	setScale();
 }
 
-void setScale(){
-	
-	if(harpScale == 0) { //Major 
-		stringNote.one = baseNote;
-		stringNote.two = baseNote + 4;
-		stringNote.three = baseNote + 4 + 3;
-	} else if (harpScale == 1) { //Major7th
-		stringNote.one = baseNote;
-		stringNote.two = baseNote + 4;
-		stringNote.three = baseNote + 4 + 6;
-	}	else if (harpScale == 2) { //Minor 
-		stringNote.one = baseNote;
-		stringNote.two = baseNote + 3;
-		stringNote.three = baseNote + 3 + 4;
-	} else if (harpScale == 3) { //Diminished
-		stringNote.one = baseNote;
-		stringNote.two = baseNote + 3;
-		stringNote.three = baseNote + 3 + 3;
-	} else if (harpScale == 4 ) { //Aug
-		stringNote.one = baseNote;
-		stringNote.two = baseNote + 4;
-		stringNote.three = baseNote + 4 + 4;
+void setScale(){	
+	switch(harpScale){
+		case 0: //Major
+			stringNote[0] = baseNote;
+			stringNote[1] = baseNote + 4;
+			stringNote[2] = baseNote + 4 + 3;
+			stringNote[3] = baseNote + 4 + 3;
+			stringNote[4] = baseNote + 4 + 3;
+			stringNote[5] = baseNote + 4 + 3;
+			stringNote[6] = baseNote + 4 + 3;
+		break;
+		case 1: //Major7th
+			stringNote[0] = baseNote;
+			stringNote[1] = baseNote + 4;
+			stringNote[2] = baseNote + 4 + 6;
+			stringNote[3] = baseNote + 4 + 6;
+			stringNote[4] = baseNote + 4 + 6;
+			stringNote[5] = baseNote + 4 + 6;
+			stringNote[6] = baseNote + 4 + 6;
+		break;
+		case 2: //Minor 
+			stringNote[0] = baseNote;
+			stringNote[1] = baseNote + 3;
+			stringNote[2] = baseNote + 3 + 4;
+			stringNote[3] = baseNote + 3 + 4;
+			stringNote[4] = baseNote + 3 + 4;
+			stringNote[5] = baseNote + 3 + 4;
+			stringNote[6] = baseNote + 3 + 4;
+		break;
+		case 3: //Diminished
+			stringNote[0] = baseNote;
+			stringNote[1] = baseNote + 3;
+			stringNote[2] = baseNote + 3 + 3;
+			stringNote[3] = baseNote + 3 + 3;
+			stringNote[4] = baseNote + 3 + 3;
+			stringNote[5] = baseNote + 3 + 3
+			stringNote[6] = baseNote + 3 + 3;
+		break;
+		case 4: //Augmented
+			stringNote[0] = baseNote;
+			stringNote[1] = baseNote + 4;
+			stringNote[2] = baseNote + 4 + 6;
+			stringNote[3] = baseNote + 4 + 6;
+			stringNote[4] = baseNote + 4 + 6;
+			stringNote[5] = baseNote + 4 + 6
+			stringNote[6] = baseNote + 4 + 6;
+		break;	
 	}
+}
 
+
+/**************************************
+**
+
+USABILITY AND INTERACTIONS
+The tiny big section for most desired feature
+
+**
+***************************************/
+void checkIdle(){
+	boolean cacheIdle = isIdle;
+	int now = millis();
+	if(now - lastInteraction > IDLE_THRESHOLD) 
+		{ isIdle = true; }
+	else 
+		{ isIdle = false; } 
+	if(isIdle == true) {
+		lasersOff(999);
+	} else if (cacheIdle == true && isIdle == false) {
+		lasersOn(200);
+	}
+	
+}
+
+//*********************
+
+// Ambient Light
+
+// **** **** **********
+
+int subtractAmbience = 0;
+int ambientPollEvery = 1000*3;
+int ambientPollLast = millis();
+
+void pollAmbientLight(){
+	int now = millis();
+	if(now-ambientPollLast>ambientPollEvery) {
+		subtractAmbience = analogRead(PINS_AMBIENT);
+	}
 }
 
 //*********************
@@ -711,11 +507,7 @@ void setScale(){
 
 // **** **** **********
 
-int getRange(int s){  
-	if(s == 1) { return digitalRead(stringRange.one); } 
-	if(s == 2) { return digitalRead(stringRange.two); } 
-	if(s == 3) { return digitalRead(stringRange.three); } 	
-}
+int getRange(int s){ return digitalRead(stringRange[s]); }
 
 int NORMALIZE(int set, int rangeLow, int rangeHigh, int toMin, int toMax) { 
 	// toMin = toMin || 0;
@@ -724,24 +516,107 @@ int NORMALIZE(int set, int rangeLow, int rangeHigh, int toMin, int toMax) {
 	return result;
 }
 
-void Midi_Send(byte cmd, byte data1, byte data2) {
-  Serial.write(cmd);
-  Serial.write(data1);
-  Serial.write(data2);
-}
-
-void blink(){
-  digitalWrite(STAT1, HIGH);
-  delay(100);
-  digitalWrite(STAT1, LOW);
-  delay(100);
-}
 
 char button(char button_num)
 {
   return (!(digitalRead(button_num)));
 }
 
+//*********************
+
+// Debugging
+
+// **** **** **********
+
+int debugLast = millis();
+int debugEvery = 7*1000;
+
+void debug(){
+	
+	int now = millis();
+	if(now-debugLast > debugEvery) {	
+		Serial.println("!!!++++++++++++++++++++++++++++++++++++++++++!!!");
+		Serial.println("!!!++++++   LASER HARP 2014             +++++!!!");
+		Serial.println("!!!++++++++++++++++++++++++++++++++++++++++++!!!");
+		Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");
+		Serial.println("LIVE STATS");	Serial.println(" ");
+		for(int s=0;s<NUMBER_STRINGS;s++) {
+			Serial.print('~~~~~~~~~~ String ');
+			Serial.print(s);
+			Serial.println('       -~~~~~~~~~~~~~~~~~~~~~~');
+			Serial.print("Note: "); Serial.println(stringNote[s]);
+			Serial.print("Midi Stage: "); Serial.println(midiStage[s]);
+			Serial.print("Triggered?: "); Serial.println(stringTriggered[s]);
+			Serial.print("Holding: "); Serial.println(holding[s]);
+			Serial.print("Photocell: "); Serial.println(PCValues[s]);
+			Serial.print("Range: "); Serial.println(stringRange[s]);
+			Serial.print("Range (Raw Values): "); Serial.println(rangeValues[s]);
+		}
+		
+		for(int k=0;k<3;k++) {
+			Serial.print("Knob: "); Serial.println(knobValues[k]);
+		}
+		
+		Serial.print("Last Interaction: "); Serial.println(lastInteraction);
+					
+		Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");
+		Serial.println("PINS");	Serial.println(" ");
+		Serial.print("TOTAL STRINGS:  "); Serial.println(NUMBER_STRINGS);
+		Serial.print("TOTAL RANGES: ");		Serial.println(NUMBER_RANGE_FINDERS);
+		Serial.print("LASER 1: ");						Serial.println(PINS_LASER_ONE);
+		Serial.print("LASER 2: ");						Serial.println(PINS_LASER_TWO);
+		Serial.print("LASER 3: ");						Serial.println(PINS_LASER_THREE);
+		Serial.print("LASER 4: ");						Serial.println(PINS_LASER_FOUR);
+		Serial.print("LASER 5: ");						Serial.println(PINS_LASER_FIVE);
+		Serial.print("LASER 6: ");						Serial.println(PINS_LASER_SIX);
+		Serial.print("LASER 7: ");						Serial.println(PINS_LASER_SEVEN);
+		Serial.print("RANGE 1 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_ONE);
+		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
+		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
+		Serial.print("RANGE 2 ECHO: ");				Serial.println(PINS_RANGE_ECHO_TWO);
+		Serial.print('PHOTOCELL 1: '););			Serial.println(PINS_PC_ONE);
+		Serial.print('PHOTOCELL 2: ');				Serial.println(PINS_PC_TWO);
+		Serial.print('PHOTOCELL 3: ');				Serial.println(PINS_PC_THREE);
+		Serial.print('PHOTOCELL 4: '););			Serial.println(PINS_PC_FOUR);
+		Serial.print('PHOTOCELL 5: ');				Serial.println(PINS_PC_FIVE);
+		Serial.print('PHOTOCELL 6: ');				Serial.println(PINS_PC_SIX);
+		Serial.print('PHOTOCELL 7: ');				Serial.println(PINS_PC_SEVEN);
+	
+		Serial.print("MODE: ");
+		Serial.println(PINS_MODE);
+	
+		debugLast = now();
+	}
+
+}
 
 
+// Setup Status Lights
+// pinMode(STAT1,OUTPUT);   
+// pinMode(STAT2,OUTPUT);
+// 
+// for(int i = 0;i < 10;i++) // flash MIDI Sheild LED's on startup
+// {
+//   digitalWrite(STAT1,HIGH);  
+//   digitalWrite(STAT2,LOW);
+//   delay(30);
+//   digitalWrite(STAT1,LOW);  
+//   digitalWrite(STAT2,HIGH);
+//   delay(30);
+// }
+// 
+// digitalWrite(STAT1,HIGH);   
+// digitalWrite(STAT2,HIGH);
 
+// void blink(){
+//   digitalWrite(STAT1, HIGH);
+//   delay(100);
+//   digitalWrite(STAT1, LOW);
+//   delay(100);
+// }
+//#define BUTTON1  2
+//#define BUTTON2  3
+//#define BUTTON3  4
+
+//#define STAT1  7
+//#define STAT2  6
