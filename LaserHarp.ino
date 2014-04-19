@@ -1,4 +1,7 @@
 #include <Streaming.h>
+include "SPI.h"
+include "Adafruit_WS2801.h"
+
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
@@ -38,14 +41,14 @@ PINS PINS PINS
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
 //*************** HELPERS ***************/
-#define OFF 1
-#define ON 2
-#define WAIT 3
+#define OFF 0
+#define ON 1
+#define WAIT 2
 #define CONTINUOUS 11
 #define NOTEON 0x90
 #define NOTEOFF 0x80
 //*************** LIMITS ***************/
-#define MIDI_NOTE_LOW 0
+#define MIDI_NOTE_LOW 1
 #define MIDI_NOTE_HIGH 115
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 RANGE
@@ -63,12 +66,13 @@ INTERACTIVITY
 //*************** DATA CACHE ***************//
 int stringRange[NUMBER_STRINGS];
 int stringNote[NUMBER_STRINGS];
-int knobValues[NUMBER_STRINGS];
-int midiStage[NUMBER_STRINGS];
 int PCValues[NUMBER_STRINGS];
 int rangeValues[NUMBER_STRINGS];
+int midiStage[NUMBER_STRINGS];
 boolean stringTriggered[NUMBER_STRINGS];
 boolean holding[NUMBER_STRINGS];
+
+int knobRawValues[NUMBER_STRINGS];
 //*************** User Tracking ***************//
 long lastInteraction;
 int lastButtonState;
@@ -81,27 +85,23 @@ byte note;
 byte velocity;
 int pot;
 
-// Mode Two Stuff
-int modeTwoCacheOne;
-int modeTwoCacheTwo;
-int modeTwoCacheThree;
-int harmonicOne[8];
-int modeTwoPos = 0;
-int mode = 0; // 0 = harp, 1 = harp notes, 2 = sampler
+boolean booted = false;
+
+int mode = 0; // 0 = momentary, 2 = on/off (sampler)
 
 void setup() {
 	setupRange();
 	setScale();
 	setupMidi();
   Serial.begin(31250);  //start serial with midi baudrate 31250
-	setupLaser();	
+	// setupLaser();	
 }
 
 void loop () {		
-		pollKnobs();   //Check for octave, key, scale, mode values
-		pollSensors(); //Check photocells and find range.
-		sendMidi();    //Send midi signal. 
-		if(checkIdle())
+	if(booted==false) { setupLaser(); booted==true; );
+	pollKnobs();   //Check for octave, key, scale, mode values
+	pollSensors(); //Check photocells and find range.
+	sendMidi();    //Send midi signal. 
 }
 /**************************************
 **
@@ -110,10 +110,10 @@ with Sharks.
 **
 ***************************************/
 int totalLasers = NUMBER_STRINGS;
-int cooldownLast = millis();
+long cooldownLast = millis();
 int cooldownEvery = 60*10;
 int cooldownPeriod = 60;
-int startupLast = millis();
+long startupLast = millis();
 boolean coolingDown = false;
 
 boolean laserState[totalLasers];
@@ -182,7 +182,7 @@ void lasersOff(int d){
 
 //*************** CHECK LASER COOLDOWN CYCLE  ***************//
 void checkCooldown(){
-	int now = millis();
+	long now = millis();
 	if(now-cooldownLast > cooldownEvery && !coolingDown) {
 		//blink 3 times then cooldown
 		for(int blink=0;blink<3;blink++){
@@ -207,10 +207,86 @@ Oh shit, I wanted to avoid this. le sigh
 **
 ***************************************/
 
-int step = 0;
+int stepIndex[8];
+int stepNumber = 14;
+int stepDuration = 1000;
+int stepEvery = stepDuration/stepNumber;
+booleen stepping[NUMBER_STRINGS];
+//
+int stepTo[NUMBER_STRINGS];
+int stepFrom[NUMBER_STRINGS];
+int stepCurrent[NUMBER_STRINGS];
+int stepDistance[NUMBER_STRINGS];
+int stepMillis[NUMBER_STRINGS];
+boolean stepping[NUMBER_STRINGS];
 
-void step(int target, int current){
-	
+#define STEPPER_THRESHOLD 50 //Must be more than this big of a gap to 
+
+int step(int s, int from, int to){
+	long now = millis();
+	if(stepping[s]){
+		if(now-stepMillis[s] > stepEvery) { //is it time to do a step
+			if(stepIndex[s] < stepNumber) { //have we finished our steps
+				stepDistance[s] = (stepFrom[s] - stepTo[s]) / stepNumber;
+				stepCurrent[s] = stepDistance[s] * (stepIndex[s]+1);
+				stepMillis[s] = now;
+				stepIndex[s]++;
+				return stepCurrent[s];
+			} else { //give them their number, and make sure it doesn't happen again.
+				stepping[s] = false;
+				stepReset(s, "all")
+				return to;
+			}
+		}
+	} else { //First step!
+		if(!stepStart(s, from, to)) return to; //If the gap isn't big enough, should have never gotten here but still.
+	}
+}
+
+boolean stepStart(int s, int from, int to){
+	boolean test;
+	difference = to-from;
+	if(difference < 0) difference=difference*1;
+	if(difference > STEPPER_THRESHOLD) {
+		stepReset("all", s);
+		stepFrom[s] = from;
+		stepTo[s] = to;
+		stepping[s] = true;
+		return true;
+	}
+}
+
+void stepStop(){
+	stepReset("all", s);
+}
+
+void stepReset(int s, char type){
+	if(type == "current") 	stepCurrent[s] = 0;
+	if(type == "begin") 		stepFrom[s] = 0;
+	if(type == "target") 		stepTo[s] = 0;
+	if(type == "distance") 	stepDistance[s] = 0;
+	if(type == "stepping") 	stepping[s] = false;
+	if(type == "all") {
+		stepCurrent[s] = 0;
+		stepFrom[s] = 0;
+		stepTo[s] = 0;
+		stepDuration[s] = 0;
+		stepIndex[s] = 0;
+		stepMillis[s] = 0;
+		stepping[s] = false;
+	}
+}
+
+void stepResetAll(){
+	for(int s=0;s<NUMBER_STRINGS;s++) { stepReset(s); }
+}
+
+void stepSet(char type, int target, int s){
+	if(type == "current") 	stepCurrent[s] = target;
+	if(type == "begin") 		stepFrom[s] = target;
+	if(type == "target") 		stepTo[s] = target;
+	if(type == "distance") 	stepDistance[s] = target;
+	if(type == "stepping") 	stepping[s] = target;
 }
 
 /**************************************
@@ -219,9 +295,6 @@ RANGE FINDER
 The tiny big section for most desired feature
 **
 ***************************************/
-
-//*************** SETUP ***************//
-int rangeMillisLast[NUMBER_STRINGS];
 
 //*************** RANGE FINDERS: SETUP PINS ***************//
 
@@ -245,8 +318,9 @@ int pinsRangeEcho[NUMBER_STRINGS];
 		pinsRangeEcho[6] = PINS_RANGE_ECHO_TWO;
 
 //*************** RANGE FINDERS: SETUP PINS FOR INPUT AND OUTPUT ***************//
-long rangeMillisSince[s], rangeMillisLast[s];
+long rangeMillisSince[NUMBER_STRINGS], rangeMillisLast[NUMBER_STRINGS];
 
+/* This setups up the range finders */
 void setupRange(){
 	for(int s=0;s<NUMBER_STRINGS;s++){
 		pinMode(pinsRangeTrigger, OUTPUT);
@@ -255,6 +329,7 @@ void setupRange(){
 	}
 }
 
+/* This pings the range finders, which sends an ultra sonic wave, pauses and then recieves it microseconds later */
 void pingRange(int s){
 	rangeMillisSince[s] = millis() - rangeMillisLast[s];
 	if(rangeMillisSince[s] > THRESHOLD_PING_RANGE) {
@@ -278,7 +353,7 @@ Without them the lasers are just pretty (and debateably dangerous)
 **
 ***************************************/
 int stringTrigDur[NUMBER_STRINGS];
-int stringActivated[NUMBER_STRINGS];
+int stringActivatedTime[NUMBER_STRINGS];
 long safetyOn[NUMBER_STRINGS];
 int stringOn;
 
@@ -286,10 +361,10 @@ int stringOn;
 
 void safetySecond(int s, boolean reset){
 	
-	int now = millis();
+	long now = millis();
 	
 	if(stringTriggered[s] && laserState[s]) {
-		stringTrigDur[s] = now-stringActivated[s];
+		stringTrigDur[s] = now-stringActivatedTime[s];
 	}	else if(!stringTriggered[s]) {
 		stringTrigDur[s] = 0;
 	}
@@ -303,7 +378,6 @@ void safetySecond(int s, boolean reset){
 				laserOn(s);
 				safetyOn[s]=0;
 			}
-			
 			//Otherwise, it will try it again and again and again until the obstruction has been removed. 
 		}
 	}
@@ -402,13 +476,12 @@ void pollSensors(){
 	boolean tripped = false;
 	pollAmbientLight();
 	for(int s=0;s<NUMBER_STRINGS;s++) {
-		if( isStringActive(s) ) { //String has been tripped. 
+		if( pollString(s) ) { //does a bunch of math, sets some stuff and returns true/false for each string.
 			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
 			setStringRange(s);
 			tripped = true;
 			safetySecond(s, false);
 		} else {
-			stringTriggered[s] = false;
 			safetySecond(s, true);
 		}
 	}
@@ -417,8 +490,32 @@ void pollSensors(){
 	else 					{ active = false; }
 	//
 }
+
+boolean pollString(int s){
+	boolean triggered;
+	int now = millis();
+	PCValues[s] = analogRead(pinsPC[s]);
+	if(!stringActivatedTime[s]) {
+		stringActivatedTime[s] = now;
+	}
+	PCThreshAdjusted = LASER_PC_THRESH-subtractAmbience; //subtract ambience from Threshold (which is taken in complete darkness)
+	triggered = ( PCValues[s] < PCThreshAdjusted );
+	if(stringActivatedTime[s] && !triggered) 	{//If it ewas activated, it's not anymore.
+		stringActivatedTime[s] = 0; 	
+		stringTriggered[s] = false;
+	} 
+	else if(!stringActivatedTime[s] && triggered){ //It's just been activated, for the very first time (as long as we know.)
+		stringActivatedTime[s] = now; 
+		stringTriggered[s] = true; 
+	} else {
+		// presently triggered. WAIT?
+	}
+	return triggered;
+}
+
 int setStringRange(int s){
-	stringRange[s] = getStringRange(s);
+	range = getStringRange(s);
+	stringRange[s] = (!stepping[s] || ) ? stringRange[s] : step(s, stringRange[s], range);
 }
 
 int getStringRange(int s){
@@ -439,36 +536,84 @@ int pinsPC[7];
 		pinsPC[5] = PINS_PC_SIX;
 		pinsPC[6] = PINS_PC_SEVEN;
 		
-boolean isStringActive(int s){
-	PCValues[s] = analogRead(pinsPC[s])
-	if(!stringActivated[s]) stringActivated[s] = millis();
-	boolean result = ( PCValues[s]-subtractAmbience < LASER_PC_THRESH );
-	if(stringActivated[s] && !result) 	stringActivated[s] = 0;
-	else if(result) 										stringTriggered[s] = true;
-	return result;
-}
+int PCThreshAdjusted;
 
-int knobValuesCache;
-int knobPollEvery = 200;
+int knobValues[3];
+int knobRawValuesCache[3];
+int knobPollEvery = 100;
 int knobPollLast = millis();
 
 void pollKnobs(){
-	int now = millis();
+	long now = millis();
 	if(now-knobPollLast>knobPollEvery) {
 		boolean tripped = false;
 		for(int s=0;s<NUMBER_KNOBS;s++) {
-			knobValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
+			knobRawValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
 		}
-		int note = (knobValues[0] != knobValuesCache[0] && tripped=true) ? NORMALIZE(knobValue[0], 0, 1024, 0, 12) : knobValuesCache[0];
-		int octave = (knobValues[1] != knobValuesCache[1] && tripped=true) ? NORMALIZE(knobValue[1], 0, 1024, 0, 8) : knobValuesCache[1];
-		int scale = (knobValues[2] != knobValuesCache[2] && tripped=true) ? NORMALIZE(knobValue[2], 0, 1024, 0, 4) : knobValuesCache[2];
-	
-		if(tripped) {
+		
+		int n = (knobRawValues[0] != knobRawValuesCache[0]));
+		int o = (knobRawValues[1] != knobRawValuesCache[1]));
+		int s = (knobRawValues[2] != knobRawValuesCache[2]));
+		
+		tripped = (n || o || s)
+		
+		if(tripped) {		
+			int note = (n) ? NORMALIZE(knobValue[0], 0, 1024, 1, 12) : knobRawValuesCache[0];
+			int octave = (o) ? NORMALIZE(knobValue[1], 0, 1024, 0, 7) : knobRawValuesCache[1];
+			int scale = (s) ? NORMALIZE(knobValue[2], 0, 1024, 0, 12) : knobRawValuesCache[2];
+
 			setBaseNote(octave*12+note);
 			setHarpScale(scale);
+	
+			knobValues[0] = note; 
+			knobValues[1] = octave; 
+			knobValues[2] = scale;
+			
+			refreshLights();
+	
+			knobRawValuesCache = knobRawValues;
 		}
-		knobValuesCache = knobValues;
 	}
+}
+
+Adafruit_WS2801 knobLights = Adafruit_WS2801(3, PINS_LIGHTS_DATA, PINS_LIGHTS_CLOCK);
+
+void setupLights(){
+	knobLights.begin();
+	knobLights.show();
+}
+
+void refreshLights(int note, int octave, int scale){ //dobn't need note...
+	//note
+	nR = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 0, 255); 
+	nB = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 255, 0); 
+	nRGB = color(nR, 0, nB); //From Blue-Red, entire scale. Changes color when octave changes color.
+	//octave
+	oR = NORMALIZE(knobValues[1], 0, 7, 0, 255);
+	oB = NORMALIZE(knobValues[1], 0, 7, 255, 0); 
+	oRGB = color(oR, 0, oB); //From Blue-Red
+	//scale
+	sR = NORMALIZE(knobValues[2], 0, 12, 50, 10);
+	sB = NORMALIZE(knobValues[2], 0, 12, 120, 40);
+	sG = NORMALIZE(knobValues[2], 0, 12, 100, 255);
+	sRGB = color(sR, sG, sB); //From Don't know. to who knows.
+	
+	//Happy Pixels
+	strip.setPixelColor(0, nRGB);
+	strip.setPixelColor(1, oRGB);
+	strip.setPixelColor(2, sRGB);
+	strip.show();
+}
+
+uint32_t color(byte r, byte g, byte b)
+{
+  uint32_t c;
+  c = r;
+  c <<= 8;
+  c |= g;
+  c <<= 8;
+  c |= b;
+  return c;
 }
 
 //*********************
@@ -631,7 +776,7 @@ The tiny big section for most desired feature
 boolean cacheIdle;
 
 boolean checkIdle(){
-	int now = millis();
+	long now = millis();
 	//
 	if(now - lastInteraction > IDLE_THRESHOLD) //Is anybody using the damn thing?
 		{ isIdle = true; }
@@ -660,7 +805,7 @@ int ambientPollEvery = 1000*3;
 int ambientPollLast = millis();
 
 void pollAmbientLight(){
-	int now = millis();
+	long now = millis();
 	if(now-ambientPollLast>ambientPollEvery) {
 		subtractAmbience = analogRead(PINS_AMBIENT);
 	}
@@ -693,12 +838,12 @@ char button(char button_num)
 
 // **** **** **********
 
-int debugLast = millis();
+long debugLast = millis();
 int debugEvery = 7*1000;
 
 void debug(){
 	
-	int now = millis();
+	long now = millis();
 	if(now-debugLast > debugEvery) {	
 		Serial.println("!!!++++++++++++++++++++++++++++++++++++++++++!!!");
 		Serial.println("!!!++++++   LASER HARP 2014             +++++!!!");
@@ -719,7 +864,7 @@ void debug(){
 		}
 		
 		for(int k=0;k<3;k++) {
-			Serial.print("Knob: "); Serial.println(knobValues[k]);
+			Serial.print("Knob: "); Serial.println(knobRawValues[k]);
 		}
 		
 		Serial.print("Last Interaction: "); Serial.println(lastInteraction);
