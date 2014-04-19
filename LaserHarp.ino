@@ -67,8 +67,8 @@ int knobValues[NUMBER_STRINGS];
 int midiStage[NUMBER_STRINGS];
 int PCValues[NUMBER_STRINGS];
 int rangeValues[NUMBER_STRINGS];
-bool stringTriggered[NUMBER_STRINGS];
-bool holding[NUMBER_STRINGS];
+boolean stringTriggered[NUMBER_STRINGS];
+boolean holding[NUMBER_STRINGS];
 //*************** User Tracking ***************//
 long lastInteraction;
 int lastButtonState;
@@ -101,6 +101,7 @@ void loop () {
 		pollKnobs();   //Check for octave, key, scale, mode values
 		pollSensors(); //Check photocells and find range.
 		sendMidi();    //Send midi signal. 
+		if(checkIdle())
 }
 /**************************************
 **
@@ -113,9 +114,9 @@ int cooldownLast = millis();
 int cooldownEvery = 60*10;
 int cooldownPeriod = 60;
 int startupLast = millis();
-bool coolingDown = false;
+boolean coolingDown = false;
 
-bool laserState[totalLasers];
+boolean laserState[totalLasers];
 
 int lasers[totalLasers]; 
 		lasers[0] = PINS_LASER_ONE;
@@ -283,7 +284,7 @@ int stringOn;
 
 #define SAFETY_LASER_DURATION  10000
 
-void safetySecond(int s, bool reset){
+void safetySecond(int s, boolean reset){
 	
 	int now = millis();
 	
@@ -399,7 +400,7 @@ void midiLoopback(){ }
 		
 void pollSensors(){
 	boolean tripped = false;
-	
+	pollAmbientLight();
 	for(int s=0;s<NUMBER_STRINGS;s++) {
 		if( isStringActive(s) ) { //String has been tripped. 
 			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
@@ -408,7 +409,7 @@ void pollSensors(){
 			safetySecond(s, false);
 		} else {
 			stringTriggered[s] = false;
-			safetySecond(s, false);
+			safetySecond(s, true);
 		}
 	}
 	//
@@ -441,7 +442,7 @@ int pinsPC[7];
 boolean isStringActive(int s){
 	PCValues[s] = analogRead(pinsPC[s])
 	if(!stringActivated[s]) stringActivated[s] = millis();
-	bool result = ( PCValues[s] < LASER_PC_THRESH );
+	boolean result = ( PCValues[s]-subtractAmbience < LASER_PC_THRESH );
 	if(stringActivated[s] && !result) 	stringActivated[s] = 0;
 	else if(result) 										stringTriggered[s] = true;
 	return result;
@@ -454,7 +455,7 @@ int knobPollLast = millis();
 void pollKnobs(){
 	int now = millis();
 	if(now-knobPollLast>knobPollEvery) {
-		bool tripped = false;
+		boolean tripped = false;
 		for(int s=0;s<NUMBER_KNOBS;s++) {
 			knobValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
 		}
@@ -627,19 +628,25 @@ The tiny big section for most desired feature
 
 **
 ***************************************/
-void checkIdle(){
-	boolean cacheIdle = isIdle;
+boolean cacheIdle;
+
+boolean checkIdle(){
 	int now = millis();
-	if(now - lastInteraction > IDLE_THRESHOLD) 
+	//
+	if(now - lastInteraction > IDLE_THRESHOLD) //Is anybody using the damn thing?
 		{ isIdle = true; }
 	else 
 		{ isIdle = false; } 
-	if(isIdle == true) {
+	//
+	if(isIdle == true && !cacheIdle) { //If isIdle was just set as true, and it's not already idling. 
 		lasersOff(999);
-	} else if (cacheIdle == true && isIdle == false) {
+		return true;
+	} else if (cacheIdle == true && isIdle == false) { //if it was idle last time we checked, but it's not anymore.
 		lasersOn(200);
-	}
-	
+		return false;
+	} //else do nothing because it's idle or running.
+	//
+	cacheIdle = isIdle; //So we have something to match against.
 }
 
 //*********************
