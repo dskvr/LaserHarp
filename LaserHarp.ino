@@ -2,39 +2,39 @@
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
-#DEFINE NUMBER_STRINGS = 7;
-#DEFINE NUMBER_SENSORS = 2;
-	#DEFINE NUMBER_RANGE_FINDERS = 2;
-	/*++++++++++++++++++++++++++++++++++++++++++++++++++
-	PINS PINS PINS
-	//*************** LASER SWITCH PINS ***************/
-	#define PINS_LASER_ONE 			28
-	#define PINS_LASER_TWO 			30
-	#define PINS_LASER_THREE 		32
-	//*************** STRING RANGE FINDERS ***************//
-	//								TRIGGER ***************//
-	#define PINS_RANGE_TRIG_ONE 	23 // Trigger Pin
-	#define PINS_RANGE_TRIG_TWO 	25 // Trigger Pin
-	//								ECHO ***************//
-	#define PINS_RANGE_ECHO_ONE 	22
-	#define PINS_RANGE_ECHO_TWO 	24
-	//*************** USERRANGE TRIG & ECHO ***************//
-	#define PINS_USER_RANGE_TRIG 	27
-	#define PINS_USER_RANGE_ECHO	26
-	//*************** PHOTOCELLS ***************//
-	#define PINS_PC_ONE 					8
-	#define PINS_PC_TWO 					9 
-	#define PINS_PC_THREE 				10
-	#define PINS_PC_FOUR 					8
-	#define PINS_PC_FIVE 					9 
-	#define PINS_PC_SIX		 				10
-	#define PINS_PC_SEVEN		 				10
-	//*************** KNOB PINS ***************//
-	#define PINS_KNOB_ONE 				0
-	#define PINS_KNOB_TWO  				1
-	#define PINS_KNOB_THREE  			2
-	//*************** MODE BUTTON PIN ***************//
-	#define PINS_MODE 						11
+#define NUMBER_STRINGS = 7;
+#define NUMBER_SENSORS = 2;
+#define NUMBER_RANGE_FINDERS = 2;
+/*++++++++++++++++++++++++++++++++++++++++++++++++++
+PINS PINS PINS
+//*************** LASER SWITCH PINS ***************/
+#define PINS_LASER_ONE 			28
+#define PINS_LASER_TWO 			30
+#define PINS_LASER_THREE 		32
+//*************** STRING RANGE FINDERS ***************//
+//								TRIGGER ***************//
+#define PINS_RANGE_TRIG_ONE 	23 // Trigger Pin
+#define PINS_RANGE_TRIG_TWO 	25 // Trigger Pin
+//								ECHO ***************//
+#define PINS_RANGE_ECHO_ONE 	22
+#define PINS_RANGE_ECHO_TWO 	24
+//*************** USERRANGE TRIG & ECHO ***************//
+#define PINS_USER_RANGE_TRIG 	27
+#define PINS_USER_RANGE_ECHO	26
+//*************** PHOTOCELLS ***************//
+#define PINS_PC_ONE 					8
+#define PINS_PC_TWO 					9 
+#define PINS_PC_THREE 				10
+#define PINS_PC_FOUR 					8
+#define PINS_PC_FIVE 					9 
+#define PINS_PC_SIX		 				10
+#define PINS_PC_SEVEN		 				10
+//*************** KNOB PINS ***************//
+#define PINS_KNOB_ONE 				0
+#define PINS_KNOB_TWO  				1
+#define PINS_KNOB_THREE  			2
+//*************** MODE BUTTON PIN ***************//
+#define PINS_MODE 						11
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
 //*************** HELPERS ***************/
@@ -201,6 +201,19 @@ void coolDown(){
 
 /**************************************
 **
+STEPPER
+Oh shit, I wanted to avoid this. le sigh
+**
+***************************************/
+
+int step = 0;
+
+void step(int target, int current){
+	
+}
+
+/**************************************
+**
 RANGE FINDER
 The tiny big section for most desired feature
 **
@@ -210,23 +223,25 @@ The tiny big section for most desired feature
 int rangeMillisLast[NUMBER_STRINGS];
 
 //*************** RANGE FINDERS: SETUP PINS ***************//
+
+// SIMPLIFY!, memory hog...
 int pinsRangeTrigger[NUMBER_STRINGS];
 		pinsRangeTrigger[0] = PINS_RANGE_TRIG_ONE;
 		pinsRangeTrigger[1] = PINS_RANGE_TRIG_ONE;
 		pinsRangeTrigger[2] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[3] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[4] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[5] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[6] = PINS_RANGE_TRIG_ONE;
+		pinsRangeTrigger[3] = PINS_RANGE_TRIG_TWO;
+		pinsRangeTrigger[4] = PINS_RANGE_TRIG_TWO;
+		pinsRangeTrigger[5] = PINS_RANGE_TRIG_TWO;
+		pinsRangeTrigger[6] = PINS_RANGE_TRIG_TWO;
 		
 int pinsRangeEcho[NUMBER_STRINGS];
 		pinsRangeEcho[0] = PINS_RANGE_ECHO_ONE;
 		pinsRangeEcho[1] = PINS_RANGE_ECHO_ONE;
 		pinsRangeEcho[2] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[3] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[4] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[5] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[6] = PINS_RANGE_ECHO_ONE;
+		pinsRangeEcho[3] = PINS_RANGE_ECHO_TWO;
+		pinsRangeEcho[4] = PINS_RANGE_ECHO_TWO;
+		pinsRangeEcho[5] = PINS_RANGE_ECHO_TWO;
+		pinsRangeEcho[6] = PINS_RANGE_ECHO_TWO;
 
 //*************** RANGE FINDERS: SETUP PINS FOR INPUT AND OUTPUT ***************//
 long rangeMillisSince[s], rangeMillisLast[s];
@@ -287,7 +302,9 @@ void safetySecond(int s, bool reset){
 				laserOn(s);
 				safetyOn[s]=0;
 			}
-		} 
+			
+			//Otherwise, it will try it again and again and again until the obstruction has been removed. 
+		}
 	}
 	
 	if(stringTrigDur[s] > SAFETY_LASER_DURATION) {  //Something has blocked the laser for 10 seconds, turn on the Safety
@@ -473,51 +490,131 @@ void setHarpScale(char scale){
 
 void setScale(){	
 	switch(harpScale){
-		case 0: //Major
+		
+		case 0: //W – W – H – W – W – W – H //ionian/major
 			stringNote[0] = baseNote;
-			stringNote[1] = baseNote + 4;
-			stringNote[2] = baseNote + 4 + 3;
-			stringNote[3] = baseNote + 4 + 3;
-			stringNote[4] = baseNote + 4 + 3;
-			stringNote[5] = baseNote + 4 + 3;
-			stringNote[6] = baseNote + 4 + 3;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 1;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 2;
 		break;
-		case 1: //Major7th
+		case 1: //w h w w h w w //MINOR Aeolian
 			stringNote[0] = baseNote;
-			stringNote[1] = baseNote + 4;
-			stringNote[2] = baseNote + 4 + 6;
-			stringNote[3] = baseNote + 4 + 6;
-			stringNote[4] = baseNote + 4 + 6;
-			stringNote[5] = baseNote + 4 + 6;
-			stringNote[6] = baseNote + 4 + 6;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 1;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 1;
+			stringNote[6] = stringNote[5] + 2;
 		break;
-		case 2: //Minor 
+		case 2: //harmonic minor W - H - W - W - H - W+H - H 
 			stringNote[0] = baseNote;
-			stringNote[1] = baseNote + 3;
-			stringNote[2] = baseNote + 3 + 4;
-			stringNote[3] = baseNote + 3 + 4;
-			stringNote[4] = baseNote + 3 + 4;
-			stringNote[5] = baseNote + 3 + 4;
-			stringNote[6] = baseNote + 3 + 4;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 1;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 1;
+			stringNote[6] = stringNote[5] + 3;
+		case 3: //melodic minor W - H - W - W - W - W - H
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 1;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 2;
+		case 4: //w h w w w h w - dorian
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 1;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 1;
 		break;
-		case 3: //Diminished
+		case 5: //h w w w h w w Phyrigian
 			stringNote[0] = baseNote;
-			stringNote[1] = baseNote + 3;
-			stringNote[2] = baseNote + 3 + 3;
-			stringNote[3] = baseNote + 3 + 3;
-			stringNote[4] = baseNote + 3 + 3;
-			stringNote[5] = baseNote + 3 + 3
-			stringNote[6] = baseNote + 3 + 3;
+			stringNote[1] = stringNote[0] + 1;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 1;
+			stringNote[6] = stringNote[5] + 2;
 		break;
-		case 4: //Augmented
+		case 6: //w w w h w w h Lydian
 			stringNote[0] = baseNote;
-			stringNote[1] = baseNote + 4;
-			stringNote[2] = baseNote + 4 + 6;
-			stringNote[3] = baseNote + 4 + 6;
-			stringNote[4] = baseNote + 4 + 6;
-			stringNote[5] = baseNote + 4 + 6
-			stringNote[6] = baseNote + 4 + 6;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 1;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 2;
+		break;
+		case 7: //W - W - W - H - W - H - W Lydian Flat Seven
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 1;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 1;
+		break;
+		case 8: //Mixolydian w w h w w h w
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 1;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 1;
 		break;	
+		case 9: //w w h w w h w - Locrian
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 1;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 1;
+		break;
+		case 10: //W - W - W+H - W - W+H - Penta Major
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 3;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 3;
+			stringNote[6] = stringNote[5] + 4;
+		break;
+		case 11: //W+H - W - W - W+H + W - Penta Minor
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 3;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 3;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 5;
+		break;
+		case 12: //W+H - H - H - H - H - W+H + W - blues
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 3;
+			stringNote[2] = stringNote[1] + 1;
+			stringNote[3] = stringNote[2] + 1;
+			stringNote[4] = stringNote[3] + 1;
+			stringNote[5] = stringNote[4] + 1;
+			stringNote[6] = stringNote[5] + 3;
+		break;
+		case 13: //whole tone
+			stringNote[0] = baseNote;
+			stringNote[1] = stringNote[0] + 2;
+			stringNote[2] = stringNote[1] + 2;
+			stringNote[3] = stringNote[2] + 2;
+			stringNote[4] = stringNote[3] + 2;
+			stringNote[5] = stringNote[4] + 2;
+			stringNote[6] = stringNote[5] + 2;
+		break;
 	}
 }
 
@@ -602,9 +699,9 @@ void debug(){
 		Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");
 		Serial.println("LIVE STATS");	Serial.println(" ");
 		for(int s=0;s<NUMBER_STRINGS;s++) {
-			Serial.print('~~~~~~~~~~ String ');
+			Serial.print("~~~~~~~~~~ String ");
 			Serial.print(s);
-			Serial.println('       -~~~~~~~~~~~~~~~~~~~~~~');
+			Serial.println("       -~~~~~~~~~~~~~~~~~~~~~~");
 			Serial.print("Note: "); Serial.println(stringNote[s]);
 			Serial.print("Midi Stage: "); Serial.println(midiStage[s]);
 			Serial.print("Triggered?: "); Serial.println(stringTriggered[s]);
@@ -635,13 +732,13 @@ void debug(){
 		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
 		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
 		Serial.print("RANGE 2 ECHO: ");				Serial.println(PINS_RANGE_ECHO_TWO);
-		Serial.print('PHOTOCELL 1: '););			Serial.println(PINS_PC_ONE);
-		Serial.print('PHOTOCELL 2: ');				Serial.println(PINS_PC_TWO);
-		Serial.print('PHOTOCELL 3: ');				Serial.println(PINS_PC_THREE);
-		Serial.print('PHOTOCELL 4: '););			Serial.println(PINS_PC_FOUR);
-		Serial.print('PHOTOCELL 5: ');				Serial.println(PINS_PC_FIVE);
-		Serial.print('PHOTOCELL 6: ');				Serial.println(PINS_PC_SIX);
-		Serial.print('PHOTOCELL 7: ');				Serial.println(PINS_PC_SEVEN);
+		Serial.print("PHOTOCELL 1: "););			Serial.println(PINS_PC_ONE);
+		Serial.print("PHOTOCELL 2: ");				Serial.println(PINS_PC_TWO);
+		Serial.print("PHOTOCELL 3: ");				Serial.println(PINS_PC_THREE);
+		Serial.print("PHOTOCELL 4: "););			Serial.println(PINS_PC_FOUR);
+		Serial.print("PHOTOCELL 5: ");				Serial.println(PINS_PC_FIVE);
+		Serial.print("PHOTOCELL 6: ");				Serial.println(PINS_PC_SIX);
+		Serial.print("PHOTOCELL 7: ");				Serial.println(PINS_PC_SEVEN);
 	
 		Serial.print("MODE: ");
 		Serial.println(PINS_MODE);
