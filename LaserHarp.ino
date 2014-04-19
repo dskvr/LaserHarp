@@ -94,6 +94,7 @@ void setup() {
 	setScale();
 	setupMidi();
   Serial.begin(31250);  //start serial with midi baudrate 31250
+	setupKnobs();
 	// setupLaser();	
 }
 
@@ -543,12 +544,17 @@ int knobRawValuesCache[3];
 int knobPollEvery = 100;
 int knobPollLast = millis();
 
+void setupKnobs(){
+	pinMode(pinsKnob[s], OUTPUT);
+	setupKnobLights()
+}
+
 void pollKnobs(){
 	long now = millis();
 	if(now-knobPollLast>knobPollEvery) {
 		boolean tripped = false;
-		for(int s=0;s<NUMBER_KNOBS;s++) {
-			knobRawValues[s] = analogRead(pinsKnob[s]) / 8; // convert value to value 0-127
+		for(int k=0;k<NUMBER_KNOBS;s++) {
+			knobRawValues[k] = analogRead(pinsKnob[k]) / 8; // convert value to value 0-127
 		}
 		
 		int n = (knobRawValues[0] != knobRawValuesCache[0]));
@@ -578,20 +584,23 @@ void pollKnobs(){
 
 Adafruit_WS2801 knobLights = Adafruit_WS2801(3, PINS_LIGHTS_DATA, PINS_LIGHTS_CLOCK);
 
-void setupLights(){
+void setupKnobLights(){
 	knobLights.begin();
 	knobLights.show();
 }
 
-void refreshLights(int note, int octave, int scale){ //dobn't need note...
+void refreshLights(int note, int octave, int scale){ //don't need note...
+
 	//note
 	nR = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 0, 255); 
 	nB = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 255, 0); 
 	nRGB = color(nR, 0, nB); //From Blue-Red, entire scale. Changes color when octave changes color.
+	
 	//octave
 	oR = NORMALIZE(knobValues[1], 0, 7, 0, 255);
 	oB = NORMALIZE(knobValues[1], 0, 7, 255, 0); 
 	oRGB = color(oR, 0, oB); //From Blue-Red
+	
 	//scale
 	sR = NORMALIZE(knobValues[2], 0, 12, 50, 10);
 	sB = NORMALIZE(knobValues[2], 0, 12, 120, 40);
@@ -603,6 +612,7 @@ void refreshLights(int note, int octave, int scale){ //dobn't need note...
 	strip.setPixelColor(1, oRGB);
 	strip.setPixelColor(2, sRGB);
 	strip.show();
+	
 }
 
 uint32_t color(byte r, byte g, byte b)
