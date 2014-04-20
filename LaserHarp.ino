@@ -47,15 +47,15 @@ PINS PINS PINS
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
 //*************** LIMITS ***************/
-#define MIDI_NOTE_LOW 1
-#define MIDI_NOTE_HIGH 115
+#define MIDI_NOTE_LOW 					1
+#define MIDI_NOTE_HIGH 					115
 //*************** MIDI VALUES ***************/
-#define OFF 0
-#define ON 1
-#define WAIT 2
-#define CONTINUOUS 11
-#define NOTEON 0x90
-#define NOTEOFF 0x80
+#define OFF 										0
+#define ON 											1
+#define WAIT 										2
+#define CONTINUOUS 							11
+#define NOTEON 									0x90
+#define NOTEOFF 								0x80
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 RANGE
 //*************** LIMITS ***************/
@@ -84,6 +84,9 @@ long lastInteraction;
 int lastButtonState;
 boolean isIdle;
 boolean active = false;
+boolean booted = false;
+//*************** Stepper for range tweens ***************//
+boolean stepping[NUMBER_STRINGS];
 //*************** Midi Variables ***************//
 int action = ON; //1 =note off ; 2=note on ; 3= wait
 byte incomingByte;
@@ -97,8 +100,6 @@ uint8_t pinsKnob[3];
 int baseNote = DEFAULT_BASE_NOTE;
 int harpScale = DEFAULT_SCALE;
 
-boolean booted = false;
-
 int mode = 0; // 0 = momentary, 2 = on/off (sampler)
 
 void setup() {
@@ -109,8 +110,11 @@ void setup() {
 	setupMidi();
   Serial.begin(31250);  //start serial with midi baudrate 31250
 	setupKnobs();
+	interrupts();	
 	// setupLasers();	
 }
+
+void update(){}
 
 void loop () {		
 	if(booted==false) { startupLasers(); booted==true; }
@@ -431,9 +435,9 @@ boolean pollString(int s){
 }
 
 int setStringRange(int s){
-	// int range = getStringRange(s);
-	// stringRange[s] = (!stepping[s]) ? range : step(s, stringRange[s], range);
-	stringRange[s] = getStringRange(s);
+	int range = getStringRange(s);
+	stringRange[s] = (!stepping[s]) ? range : step(s, stringRange[s], range);
+	// stringRange[s] = getStringRange(s);
 }
 
 int getStringRange(int s){
@@ -464,9 +468,9 @@ void pollKnobs(){
 	if(now-knobPollLast>knobPollEvery) {
 		boolean tripped = false;
 		
-		knobRawValue[0] = analogRead(PINS_KNOB_OCTAVE) / 8;
-		knobRawValue[1] = analogRead(PINS_KNOB_NOTE) / 8;
-		knobRawValue[2] = analogRead(PINS_KNOB_SCALE) / 8;
+		knobRawValue[0] = analogRead(PINS_KNOB_OCTAVE);
+		knobRawValue[1] = analogRead(PINS_KNOB_NOTE);
+		knobRawValue[2] = analogRead(PINS_KNOB_SCALE);
 		
 		int n = (knobRawValue[0] != knobRawValueCache[0]);
 		int o = (knobRawValue[1] != knobRawValueCache[1]);
@@ -768,7 +772,6 @@ int stepFrom[NUMBER_STRINGS];
 int stepCurrent[NUMBER_STRINGS];
 int stepDistance[NUMBER_STRINGS];
 int stepMillis[NUMBER_STRINGS];
-bool stepping[NUMBER_STRINGS];
 
 #define STEPPER_THRESHOLD 50 //Must be more than this big of a gap to 
 
