@@ -1,10 +1,12 @@
+//TODO// Objectify those strings, yeah. With absolute precision.
 #include <Streaming.h>
 #include "SPI.h"
 #include "Adafruit_WS2801.h"
-
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
+#define DEBUG										false
+#define DEBUG_STATS							false
 #define NUMBER_STRINGS  				7
 #define NUMBER_PHOTOCELLS  			7
 #define NUMBER_RANGE_FINDERS		2
@@ -99,8 +101,13 @@ uint8_t pinsKnob[3];
 //*************** Music Math  ***************//
 int baseNote = DEFAULT_BASE_NOTE;
 int harpScale = DEFAULT_SCALE;
-
+//*************** Ambient Light Sensor (532nm sensitive)  ***************//
+int PCThreshAdjusted, subtractAmbience;
+//*************** Switch Modes!  ***************//
 int mode = 0; // 0 = momentary, 2 = on/off (sampler)
+//*************** Debugging  ***************//
+long debugLast = millis();
+int debugEvery = 7*1000;
 
 void setup() {
 	setupStepper();
@@ -121,6 +128,7 @@ void loop () {
 	pollKnobs();   //Check for octave, key, scale, mode values
 	pollSensors(); //Check photocells and find range.
 	sendMidi();    //Send midi signal. 
+	if(DEBUG) debugReport();
 }
 /**************************************
 **
@@ -161,11 +169,13 @@ void shutdownLasers(){
 
 //*************** LASERS: TURN A LASER ON ***************//
 void laserOn(int laser){
+	if(DEBUG) LOG(1, "(ON) Laser", laser);
 	digitalWrite(lasers[laser], HIGH);
 	laserState[laser] = true;
 }
 //*************** LASERS: TURN A LASER OFF  ***************//
 void laserOff(int laser){
+	if(DEBUG) LOG(1, "(OFF) Laser", laser);
 	digitalWrite(lasers[laser], LOW);
 	laserState[laser] = false;
 }
@@ -174,6 +184,7 @@ void lasersOn(){
 	for(int l = 0; l < totalLasers; l++) {
 		laserOn(l);
 	}
+	lasersCooldownSet("startupLast", millis());
 }
 //*************** LASERS: TURN ALL ON WITH DELAY ***************//
 void lasersOn(int d){
@@ -181,12 +192,14 @@ void lasersOn(int d){
 		laserOn(l);
 		delay(d);
 	}
+	lasersCooldownSet("startupLast", millis());
 }
 //*************** LASERS: TURN ALL OFF ***************//
 void lasersOff(){
 	for(int l = 0; l < totalLasers; l++) {
 		laserOff(l); 
 	}
+	lasersCooldownSet("cooldownLast", millis());
 }
 
 //*************** LASERS: TURN ALL OFF WITH DELAY ***************//
@@ -195,25 +208,41 @@ void lasersOff(int d){
 		laserOff(l);
 		delay(d);
 	}
+	lasersCooldownSet("cooldownLast", millis());
 }
 
 //*************** CHECK LASER COOLDOWN CYCLE  ***************//
-void checkCooldown(){
+void lasersCheckCooldown(){
 	long now = millis();
-	if(now-cooldownLast > cooldownEvery && !coolingDown) {
-		//blink 3 times then cooldown
-		for(int blink=0;blink<3;blink++){
-			lasersOff( 20 );  delay(250);
-			lasersOn( 70 );   delay(500);
-		}
-	} else if(now-startupLast > cooldownPeriod && coolingDown) {
-		lasersOn( 250 );
+	if(now-startupLast > cooldownEvery && !coolingDown) {
+		lasersCooldown();
+	} else if(now-cooldownLast > cooldownPeriod && coolingDown) {
+		lasersCooled();		
 	} else {
 		//do nothing
 	}
 }
 
-void coolDown(){} 
+void lasersCooldownSet(const char* type, long millis) {
+	if(type == "cooldownLast") 	cooldownLast = millis; 
+	if(type == "startupLast") 	startupLast = millis; 
+}
+
+void lasersCooldown(){
+	//blink 3 times then cooldown
+	for(int blink=0;blink<3;blink++){
+		lasersOff( 20 );  delay(250);
+		lasersOn( 10 );   delay(500);
+	}
+	if(DEBUG) LOG("Cooling Down", "Lasers", 7);
+	lasersOff(500); delay(400);
+	cooldownLast = millis();
+} 
+
+void lasersCooled(){
+	lasersOn( 250 );
+	if(DEBUG) LOG("Cooling Finished", "Lasers", 7);
+}
 
 /**************************************
 **
@@ -267,6 +296,7 @@ void setupRange(){
 void pingRange(int s){
 	rangeMillisSince[s] = millis() - rangeMillisLast[s];
 	if(rangeMillisSince[s] > THRESHOLD_PING_RANGE) {
+		if(DEBUG) LOG(pinsRangeTrigger[s], "(PING) Range for String/Laser ", s);
 		long duration;
 		digitalWrite(pinsRangeTrigger[s], LOW); 
 	 	delayMicroseconds(2); 
@@ -274,6 +304,7 @@ void pingRange(int s){
 	 	delayMicroseconds(10); 
 	 	digitalWrite(pinsRangeTrigger[s], LOW);
 	 	duration = pulseIn(pinsRangeEcho[s], HIGH);
+		if(DEBUG) LOG(pinsRangeEcho[s], "(PING) Range for String/Laser ", s);
 		rangeMillisLast[s] = millis();
 	}
 }
@@ -358,6 +389,11 @@ void Midi_Send(byte cmd, byte data1, byte data2) {
   Serial.write(cmd);
   Serial.write(data1);
   Serial.write(data2);
+	if(DEBUG) {
+		LOG(cmd, "Sending MIDI cmd");
+		LOG(data1, "Sending MIDI data1");
+		LOG(data2, "Sending MIDI data2");
+	}
 }
 
 void sendMidi(){
@@ -365,16 +401,22 @@ void sendMidi(){
 		case 1: //toggle
 			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s]) {
-					if(midiStage[s]) { //is presently off
+					if(DEBUG) LOG(s, "String Triggered (Toggle Mode)");
+					if(!midiStage[s]) { //is presently off
 						Midi_Send(NOTEON, stringNote[s], stringRange[s]); 
 						Midi_Send(0xB0, 22+s, stringRange[s]); 
 						midiStage[s] = 1; //on
+						stringTriggered[s] = false;
+						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note ON", s);
 					} else { //is presently on
 						Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
 						midiStage[s] = 0; //off
+						stringTriggered[s] = false;
+						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note OFF", s);
 					}
 				} else {
 					midiStage[s] = 2; //wait
+					if(DEBUG) LOG(stringNote[s], "(toggle) Waiting...", s);
 				}
 			}
 			break;
@@ -382,15 +424,18 @@ void sendMidi(){
 			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s] && midiStage[s]==0) {
 					Midi_Send(NOTEON, stringNote[s], stringRange[s]);
-					Midi_Send(0xB0, 17, stringRange[s]);
+					Midi_Send(0xB0, 22+s, stringRange[s]);
 					midiStage[s] = ON;
 					stringTriggered[s] = false;
-				} else if( !stringTriggered[s] && midiStage[s] ) { 
+					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note ON", s);
+				} else if( !stringTriggered[s] && midiStage[s]) { //is not trigged but current stage is ON or WAIT. 
 					Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
 					midiStage[s] = OFF;
-				} else if(stringTriggered[s]) {
+					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note OFF", s);
+				} else if(stringTriggered[s] && midiStage[s] == ON) {
 					midiStage[s] = WAIT;
-					Midi_Send(0xB0, 17, stringRange[s]);
+					Midi_Send(0xB0, 22+s, stringRange[s]);
+					if(DEBUG) LOG(stringNote[s], "(Momentary) Waiting...", s);
 				}
 			}
 	}
@@ -401,8 +446,11 @@ void setupMidi(){
 }
 
 void midiLoopback(){ }
+
+long lastPoll = millis();
 		
 void pollSensors(){
+	if(DEBUG) LOG(millis()-lastPoll, "(Polling Sensors) Cycling every");
 	pollAmbientLight();
 	for(int s=0;s<NUMBER_STRINGS;s++) {
 		if( pollString(s) ) { //does a bunch of math, sets some stuff and returns true/false for each string.
@@ -414,11 +462,9 @@ void pollSensors(){
 			safetySecond(s, true);
 		}
 	}
-	
+	lastPoll = millis();
 	//
 }
-
-int PCThreshAdjusted, subtractAmbience;
 
 boolean pollString(int s){
 	boolean triggered;
@@ -479,6 +525,7 @@ void pollKnobs(){
 		tripped = (n || o || s);
 		
 		if(tripped) {		
+			if(DEBUG) LOG(3, "(Knobs) Value has changed");
 			int note = (n) ? NORMALIZE(knobRawValue[0], 0, 1024, 1, 12) : knobValue[0];
 			int octave = (o) ? NORMALIZE(knobRawValue[1], 0, 1024, 0, 7) : knobValue[1];
 			int scale = (s) ? NORMALIZE(knobRawValue[2], 0, 1024, 0, 12) : knobValue[2];
@@ -548,15 +595,21 @@ uint32_t color(byte r, byte g, byte b)
 // **** **** **********
 
 void setBaseNote(int n){
+ if(DEBUG) LOG(n, "(Notes) Setting Base Note");
  baseNote = n;
+ if(baseNote > MIDI_NOTE_HIGH) { baseNote = MIDI_NOTE_HIGH; }
+ if(baseNote < MIDI_NOTE_LOW) { baseNote = MIDI_NOTE_LOW; }\
+ if(DEBUG) LOG(baseNote, "(Notes) Base note set");
 }
 
 void setHarpScale(char scale){
 	harpScale = scale;
 	setScale();
+	if(DEBUG) LOG(scale, "(Notes) Scale has been set.");
 }
 
 void setScale(){	
+	if(DEBUG) LOG("harpscale", "(Notes) Setting scale.");
 	switch(harpScale){
 		
 		case 0: //W – W – H – W – W – W – H //ionian/major
@@ -705,11 +758,13 @@ boolean checkIdle(){
 	else 
 		{ isIdle = false; } 
 	//
-	if(isIdle == true && !cacheIdle) { //If isIdle was just set as true, and it's not already idling. 
+	if(isIdle && !cacheIdle) { //If isIdle was just set as true, and it's not already idling. 
 		lasersOff(999);
+		if(DEBUG) LOG(lastInteraction, "(Idle) Presently Idle.");
 		return true;
-	} else if (cacheIdle == true && isIdle == false) { //if it was idle last time we checked, but it's not anymore.
+	} else if (cacheIdle && !isIdle) { //if it was idle last time we checked, but it's not anymore.
 		lasersOn(200);
+		if(DEBUG) LOG(now, "(Idle) Idle Broken, activity detected.");
 		return false;
 	} //else do nothing because it's idle or running.
 	//
@@ -730,6 +785,7 @@ void pollAmbientLight(){
 	long now = millis();
 	if(now-ambientPollLast>ambientPollEvery) {
 		subtractAmbience = analogRead(PINS_PC_AMBIENT);
+		 if(DEBUG) LOG(subtractAmbience, "(Ambient Light) Subtracting ambient light in 532nm wavelength.");
 	}
 }
 
@@ -784,12 +840,14 @@ int step(int s, int from, int to){
 	if(stepping[s]){
 		if(now-stepMillis[s] > stepEvery) { //is it time to do a step
 			if(stepIndex[s] < stepNumber) { //have we finished our steps
+				if(DEBUG) LOG(s, "(Stepper) Step"); 
 				stepDistance[s] = (stepFrom[s] - stepTo[s]) / stepNumber;
 				stepCurrent[s] = stepDistance[s] * (stepIndex[s]+1);
 				stepMillis[s] = now;
 				stepIndex[s]++;
 				return stepCurrent[s];
 			} else { //give them their number, and make sure it doesn't happen again.
+				if(DEBUG) LOG(s, "(Stepper) Steps Complete"); 
 				stepping[s] = false;
 				stepReset(s, "all");
 				stepIndex[s] = -1; //this flags that it has already been completed.
@@ -802,7 +860,8 @@ int step(int s, int from, int to){
 }
 
 boolean stepStart(int s, int from, int to){
-	if(stepIndex[s] == -1) return false; 
+	if(stepIndex[s] == -1) return false;
+	if(DEBUG) { LOG(s, "(Stepper) Initialized for String/Laser"); } 
 	stepReset(s, "all");
 	int difference = to-from;
 	if(difference < 0) difference=difference*1;
@@ -821,6 +880,7 @@ void stepStop(int s){
 }
 
 void stepReset(int s, const char* type){
+	if(DEBUG) { LOG(s, "(Stepper) Reset"); } 
 	if(type == "current") 	stepCurrent[s] = 0;
 	if(type == "begin") 		stepFrom[s] = 0;
 	if(type == "target") 		stepTo[s] = 0;
@@ -854,9 +914,28 @@ void stepSet(const char* type, int target, int s){
 // Debugging
 
 // **** **** **********
-long debugLast = millis();
-int debugEvery = 7*1000;
-void debug(){
+
+void LOG(int in ){
+	Serial.println(in);
+}
+
+void LOG(int in, const char* label){
+	Serial.print(label); Serial.print(": "); Serial.println(in);
+}
+
+void LOG(const char* in, const char* label){
+	Serial.print(label); Serial.print(": "); Serial.println(in);
+}
+
+void LOG(const char* in, const char* label, int labelID){
+	Serial.print(label); Serial.print(" "); Serial.print(labelID); Serial.print(": "); Serial.println(in);
+}
+
+void LOG(int in, const char* label, int labelID){
+	Serial.print(label); Serial.print(" "); Serial.print(labelID); Serial.print(": "); Serial.println(in);
+}
+
+void debugReport(){
 	
 	long now = millis();
 	if(now-debugLast > debugEvery) {	
@@ -886,8 +965,8 @@ void debug(){
 					
 		Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");
 		Serial.println("PINS");	Serial.println(" ");
-		Serial.print("TOTAL STRINGS:  "); Serial.println(NUMBER_STRINGS);
-		Serial.print("TOTAL RANGES: ");		Serial.println(NUMBER_RANGE_FINDERS);
+		Serial.print("TOTAL STRINGS:  "); 		Serial.println(NUMBER_STRINGS);
+		Serial.print("TOTAL RANGES: ");				Serial.println(NUMBER_RANGE_FINDERS);
 		Serial.print("LASER 1: ");						Serial.println(PINS_LASER_ONE);
 		Serial.print("LASER 2: ");						Serial.println(PINS_LASER_TWO);
 		Serial.print("LASER 3: ");						Serial.println(PINS_LASER_THREE);
@@ -895,9 +974,6 @@ void debug(){
 		Serial.print("LASER 5: ");						Serial.println(PINS_LASER_FIVE);
 		Serial.print("LASER 6: ");						Serial.println(PINS_LASER_SIX);
 		Serial.print("LASER 7: ");						Serial.println(PINS_LASER_SEVEN);
-		Serial.print("RANGE 1 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_ONE);
-		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
-		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
 		Serial.print("RANGE 2 ECHO: ");				Serial.println(PINS_RANGE_ECHO_TWO);
 		Serial.print("PHOTOCELL 1: ");				Serial.println(PINS_PC_ONE);
 		Serial.print("PHOTOCELL 2: ");				Serial.println(PINS_PC_TWO);
@@ -906,40 +982,12 @@ void debug(){
 		Serial.print("PHOTOCELL 5: ");				Serial.println(PINS_PC_FIVE);
 		Serial.print("PHOTOCELL 6: ");				Serial.println(PINS_PC_SIX);
 		Serial.print("PHOTOCELL 7: ");				Serial.println(PINS_PC_SEVEN);
+		Serial.print("RANGE 1 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_ONE);
+		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
+		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
+
 		Serial.print("MODE: ");								Serial.println(PINS_MODE);
-		
+				
 		debugLast = now;
 	}
-
 }
-
-
-// Setup Status Lights
-// pinMode(STAT1,OUTPUT);   
-// pinMode(STAT2,OUTPUT);
-// 
-// for(int i = 0;i < 10;i++) // flash MIDI Sheild LED's on startup
-// {
-//   digitalWrite(STAT1,HIGH);  
-//   digitalWrite(STAT2,LOW);
-//   delay(30);
-//   digitalWrite(STAT1,LOW);  
-//   digitalWrite(STAT2,HIGH);
-//   delay(30);
-// }
-// 
-// digitalWrite(STAT1,HIGH);   
-// digitalWrite(STAT2,HIGH);
-
-// void blink(){
-//   digitalWrite(STAT1, HIGH);
-//   delay(100);
-//   digitalWrite(STAT1, LOW);
-//   delay(100);
-// }
-//#define BUTTON1  2
-//#define BUTTON2  3
-//#define BUTTON3  4
-
-//#define STAT1  7
-//#define STAT2  6
