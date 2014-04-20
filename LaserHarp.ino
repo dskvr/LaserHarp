@@ -19,10 +19,8 @@ PINS PINS PINS
 #define PINS_LASER_SIX	 				32
 #define PINS_LASER_SEVEN				28
 //*************** STRING RANGE FINDERS ***************//
-//								TRIGGER ***************//
 #define PINS_RANGE_TRIG_ONE 		23 // Trigger Pin
 #define PINS_RANGE_TRIG_TWO 		25 // Trigger Pin
-//								ECHO ***************//
 #define PINS_RANGE_ECHO_ONE 		22
 #define PINS_RANGE_ECHO_TWO 		24
 //*************** USERRANGE TRIG & ECHO ***************//
@@ -48,16 +46,16 @@ PINS PINS PINS
 #define PINS_MODE 							11
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
-//*************** HELPERS ***************/
+//*************** LIMITS ***************/
+#define MIDI_NOTE_LOW 1
+#define MIDI_NOTE_HIGH 115
+//*************** MIDI VALUES ***************/
 #define OFF 0
 #define ON 1
 #define WAIT 2
 #define CONTINUOUS 11
 #define NOTEON 0x90
 #define NOTEOFF 0x80
-//*************** LIMITS ***************/
-#define MIDI_NOTE_LOW 1
-#define MIDI_NOTE_HIGH 115
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 RANGE
 //*************** LIMITS ***************/
@@ -359,9 +357,7 @@ void Midi_Send(byte cmd, byte data1, byte data2) {
 }
 
 void sendMidi(){
-	
 	switch( mode ){
-		
 		case 1: //toggle
 			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s]) {
@@ -380,20 +376,17 @@ void sendMidi(){
 			break;
 		default: //momentary
 			for(int s = 0; s < NUMBER_STRINGS; s++){
-				if(stringTriggered[s] && !midiStage[s]) {
+				if(stringTriggered[s] && midiStage[s]==0) {
 					Midi_Send(NOTEON, stringNote[s], stringRange[s]);
 					Midi_Send(0xB0, 17, stringRange[s]);
-					midiStage[s] = 1;
-					// Midi_Send(0x90, stringNote.one, 70);
+					midiStage[s] = ON;
 					stringTriggered[s] = false;
 				} else if( !stringTriggered[s] && midiStage[s] ) { 
 					Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
-					midiStage[s] = 0;
-					// Midi_Send(0x80, stringNote.one, 70);
+					midiStage[s] = OFF;
 				} else if(stringTriggered[s]) {
-					midiStage[s] = 2;
+					midiStage[s] = WAIT;
 					Midi_Send(0xB0, 17, stringRange[s]);
-					// Midi_Send(NOTEON, stringNote[s], stringRange[s]);
 				}
 			}
 	}
