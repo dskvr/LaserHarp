@@ -67,6 +67,7 @@ INTERACTIVITY
 //*************** LIMITS ***************/
 #define IDLE_THRESHOLD 				30000
 #define RANGE_MAX 						114 //CHANGE!
+#define RANGE_MIN 						1	  //CHANGE!
 #define LASER_PC_THRESH 			600 //CHANGE!
 #define TOTAL_MODES 					3
 #define DEFAULT_BASE_NOTE 		60
@@ -75,7 +76,8 @@ INTERACTIVITY
 int stringRange[NUMBER_STRINGS];
 int stringNote[NUMBER_STRINGS];
 int PCValues[NUMBER_STRINGS];
-int rangeValues[NUMBER_STRINGS];
+int rangeRawValue[NUMBER_STRINGS];
+int rangeMidiValue[NUMBER_STRINGS];
 int midiStage[NUMBER_STRINGS];
 boolean stringTriggered[NUMBER_STRINGS];
 boolean holding[NUMBER_STRINGS];
@@ -123,7 +125,7 @@ void setup() {
 
 void update(){}
 
-void loop () {		
+void loop() {		
 	if(booted==false) { startupLasers(); booted==true; }
 	pollKnobs();   //Check for octave, key, scale, mode values
 	pollSensors(); //Check photocells and find range.
@@ -297,16 +299,29 @@ void pingRange(int s){
 	rangeMillisSince[s] = millis() - rangeMillisLast[s];
 	if(rangeMillisSince[s] > THRESHOLD_PING_RANGE) {
 		if(DEBUG) LOG(pinsRangeTrigger[s], "(PING) Range for String/Laser ", s);
-		long duration;
 		digitalWrite(pinsRangeTrigger[s], LOW); 
 	 	delayMicroseconds(2); 
 	 	digitalWrite(pinsRangeTrigger[s], HIGH);
 	 	delayMicroseconds(10); 
 	 	digitalWrite(pinsRangeTrigger[s], LOW);
-	 	duration = pulseIn(pinsRangeEcho[s], HIGH);
+	 	long duration = pulseIn(pinsRangeEcho[s], HIGH);
+	  rangeRawValues[s] = microsecondsToCentimeters(duration);
 		if(DEBUG) LOG(pinsRangeEcho[s], "(PING) Range for String/Laser ", s);
 		rangeMillisLast[s] = millis();
 	}
+	rangeMidiValues[s] = convertDistanceToMidi(rangeRawValues[s]);
+}
+
+int getStringRange(int s){
+	return limitRange(rangeRawValue[s]);
+}
+
+int convertDistanceToMidi(int distance){
+	return NORMALIZE(distance, 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
+}
+
+int limitRange(int range){
+	return (range > RANGE_MAX) ? RANGE_MAX : range;
 }
 
 /**************************************
@@ -403,13 +418,13 @@ void sendMidi(){
 				if(stringTriggered[s]) {
 					if(DEBUG) LOG(s, "String Triggered (Toggle Mode)");
 					if(!midiStage[s]) { //is presently off
-						Midi_Send(NOTEON, stringNote[s], stringRange[s]); 
+						Midi_Send(NOTEON, stringNote[s], rangeMidiValue[s]); 
 						Midi_Send(0xB0, 22+s, stringRange[s]); 
 						midiStage[s] = 1; //on
 						stringTriggered[s] = false;
 						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note ON", s);
 					} else { //is presently on
-						Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
+						Midi_Send(NOTEOFF, stringNote[s], rangeMidiValue[s]);
 						midiStage[s] = 0; //off
 						stringTriggered[s] = false;
 						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note OFF", s);
@@ -423,18 +438,18 @@ void sendMidi(){
 		default: //momentary
 			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s] && midiStage[s]==0) {
-					Midi_Send(NOTEON, stringNote[s], stringRange[s]);
-					Midi_Send(0xB0, 22+s, stringRange[s]);
+					Midi_Send(NOTEON, stringNote[s], rangeMidiValue[s]);
+					Midi_Send(0xB0, 22+s, rangeMidiValue[s]);
 					midiStage[s] = ON;
 					stringTriggered[s] = false;
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note ON", s);
 				} else if( !stringTriggered[s] && midiStage[s]) { //is not trigged but current stage is ON or WAIT. 
-					Midi_Send(NOTEOFF, stringNote[s], stringRange[s]);
+					Midi_Send(NOTEOFF, stringNote[s], rangeMidiValue[s]);
 					midiStage[s] = OFF;
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note OFF", s);
 				} else if(stringTriggered[s] && midiStage[s] == ON) {
 					midiStage[s] = WAIT;
-					Midi_Send(0xB0, 22+s, stringRange[s]);
+					Midi_Send(0xB0, 22+s, rangeMidiValue[s]);
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Waiting...", s);
 				}
 			}
@@ -478,21 +493,6 @@ boolean pollString(int s){
 		lastInteraction = now;
 	}
 	return stringTriggered[s];
-}
-
-int setStringRange(int s){
-	int range = getStringRange(s);
-	stringRange[s] = (!stepping[s]) ? range : step(s, stringRange[s], range);
-	// stringRange[s] = getStringRange(s);
-}
-
-int getStringRange(int s){
-	rangeValues[s]=limitRange(rangeValues[s]);
-	return NORMALIZE(rangeValues[s], 1, RANGE_MAX, MIDI_NOTE_LOW, MIDI_NOTE_HIGH);
-}
-
-int limitRange(int range){
-	return (range > RANGE_MAX) ? RANGE_MAX : range;
 }
 
 int knobValue[3];
@@ -954,7 +954,7 @@ void debugReport(){
 			Serial.print("Holding: "); Serial.println(stringTriggered[s]);
 			Serial.print("Photocell: "); Serial.println(PCValues[s]);
 			Serial.print("Range: "); Serial.println(stringRange[s]);
-			Serial.print("Range (Raw Values): "); Serial.println(rangeValues[s]);
+			Serial.print("Range (Raw Values): "); Serial.println(rangeRawValue[s]);
 		}
 		
 		for(int k=0;k<3;k++) {
