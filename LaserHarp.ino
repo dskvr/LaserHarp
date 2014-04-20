@@ -1,19 +1,23 @@
 #include <Streaming.h>
-include "SPI.h"
-include "Adafruit_WS2801.h"
+#include "SPI.h"
+#include "Adafruit_WS2801.h"
 
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
-#define NUMBER_STRINGS = 7;
-#define NUMBER_SENSORS = 2;
-#define NUMBER_RANGE_FINDERS = 2;
+#define NUMBER_STRINGS  			7
+#define NUMBER_SENSORS  			2
+#define NUMBER_RANGE_FINDERS	2
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 PINS PINS PINS
 //*************** LASER SWITCH PINS ***************/
 #define PINS_LASER_ONE 			28
 #define PINS_LASER_TWO 			30
 #define PINS_LASER_THREE 		32
+#define PINS_LASER_FOUR 		28
+#define PINS_LASER_FIVE 		30
+#define PINS_LASER_SIX	 		32
+#define PINS_LASER_SEVEN		28
 //*************** STRING RANGE FINDERS ***************//
 //								TRIGGER ***************//
 #define PINS_RANGE_TRIG_ONE 	23 // Trigger Pin
@@ -31,11 +35,15 @@ PINS PINS PINS
 #define PINS_PC_FOUR 					8
 #define PINS_PC_FIVE 					9 
 #define PINS_PC_SIX		 				10
-#define PINS_PC_SEVEN		 				10
+#define PINS_PC_SEVEN		 			10
+#define PINS_PC_AMBIENT		 		10
 //*************** KNOB PINS ***************//
-#define PINS_KNOB_ONE 				0
-#define PINS_KNOB_TWO  				1
-#define PINS_KNOB_THREE  			2
+#define PINS_KNOB_OCTAVE 				0
+#define PINS_KNOB_NOTE					1
+#define PINS_KNOB_SCALE  				2
+//*************** LIGHT PINS ***************//
+#define PINS_LIGHTS_DATA 				0
+#define  PINS_LIGHTS_CLOCK			1
 //*************** MODE BUTTON PIN ***************//
 #define PINS_MODE 						11
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -72,7 +80,7 @@ int midiStage[NUMBER_STRINGS];
 boolean stringTriggered[NUMBER_STRINGS];
 boolean holding[NUMBER_STRINGS];
 
-int knobRawValues[NUMBER_STRINGS];
+int knobRawValue[3];
 //*************** User Tracking ***************//
 long lastInteraction;
 int lastButtonState;
@@ -84,22 +92,30 @@ byte incomingByte;
 byte note;
 byte velocity;
 int pot;
+//*************** Pins ***************//
+uint8_t pinsPC[7];
+uint8_t pinsKnob[3];
+//*************** Music Math  ***************//
+int baseNote = DEFAULT_BASE_NOTE;
+int harpScale = DEFAULT_SCALE;
 
 boolean booted = false;
 
 int mode = 0; // 0 = momentary, 2 = on/off (sampler)
 
 void setup() {
+	setupStepper();
+	setupPhotocells();
 	setupRange();
 	setScale();
 	setupMidi();
   Serial.begin(31250);  //start serial with midi baudrate 31250
 	setupKnobs();
-	// setupLaser();	
+	// setupLasers();	
 }
 
 void loop () {		
-	if(booted==false) { setupLaser(); booted==true; );
+	if(booted==false) { startupLasers(); booted==true; }
 	pollKnobs();   //Check for octave, key, scale, mode values
 	pollSensors(); //Check photocells and find range.
 	sendMidi();    //Send midi signal. 
@@ -117,30 +133,28 @@ int cooldownPeriod = 60;
 long startupLast = millis();
 boolean coolingDown = false;
 
-boolean laserState[totalLasers];
+boolean laserState[NUMBER_STRINGS];
 
-int lasers[totalLasers]; 
-		lasers[0] = PINS_LASER_ONE;
-		lasers[1] = PINS_LASER_TWO;
-		lasers[2] = PINS_LASER_THREE;
-		lasers[3] = PINS_LASER_FOUR;
-		lasers[4] = PINS_LASER_FIVE;
-		lasers[5] = PINS_LASER_SIX;
-		lasers[6] = PINS_LASER_SEVEN;
+int lasers[NUMBER_STRINGS]; 
 		
 void startupLasers(){
+	lasers[0] = PINS_LASER_ONE;
+	lasers[1] = PINS_LASER_TWO;
+	lasers[2] = PINS_LASER_THREE;
+	lasers[3] = PINS_LASER_FOUR;
+	lasers[4] = PINS_LASER_FIVE;
+	lasers[5] = PINS_LASER_SIX;
+	lasers[6] = PINS_LASER_SEVEN;
+	
 	for(int l = 0;l < totalLasers; l++) {
 		pinMode(lasers[l], OUTPUT);
 	}
+	
 	lasersOn(500);
 }
 
 void shutdownLasers(){
 	
-}
-
-void setupLaser(){
-	startupLasers();
 }
 
 //*************** LASERS: TURN A LASER ON ***************//
@@ -190,104 +204,32 @@ void checkCooldown(){
 			lasersOff( 20 );  delay(250);
 			lasersOn( 70 );   delay(500);
 		}
-	} elseif(now-startupLast > cooldownPeriod && coolingDown) {
+	} else if(now-startupLast > cooldownPeriod && coolingDown) {
 		lasersOn( 250 );
 	} else {
 		//do nothing
 	}
 }
 
-void coolDown(){
-	
-}
+void coolDown(){} 
 
 /**************************************
 **
-STEPPER
-Oh shit, I wanted to avoid this. le sigh
+Photocells
+The tiny big section for most desired feature
 **
 ***************************************/
 
-int stepIndex[8];
-int stepNumber = 14;
-int stepDuration = 1000;
-int stepEvery = stepDuration/stepNumber;
-booleen stepping[NUMBER_STRINGS];
-//
-int stepTo[NUMBER_STRINGS];
-int stepFrom[NUMBER_STRINGS];
-int stepCurrent[NUMBER_STRINGS];
-int stepDistance[NUMBER_STRINGS];
-int stepMillis[NUMBER_STRINGS];
-boolean stepping[NUMBER_STRINGS];
 
-#define STEPPER_THRESHOLD 50 //Must be more than this big of a gap to 
 
-int step(int s, int from, int to){
-	long now = millis();
-	if(stepping[s]){
-		if(now-stepMillis[s] > stepEvery) { //is it time to do a step
-			if(stepIndex[s] < stepNumber) { //have we finished our steps
-				stepDistance[s] = (stepFrom[s] - stepTo[s]) / stepNumber;
-				stepCurrent[s] = stepDistance[s] * (stepIndex[s]+1);
-				stepMillis[s] = now;
-				stepIndex[s]++;
-				return stepCurrent[s];
-			} else { //give them their number, and make sure it doesn't happen again.
-				stepping[s] = false;
-				stepReset(s, "all")
-				return to;
-			}
-		}
-	} else { //First step!
-		if(!stepStart(s, from, to)) return to; //If the gap isn't big enough, should have never gotten here but still.
-	}
-}
-
-boolean stepStart(int s, int from, int to){
-	boolean test;
-	difference = to-from;
-	if(difference < 0) difference=difference*1;
-	if(difference > STEPPER_THRESHOLD) {
-		stepReset("all", s);
-		stepFrom[s] = from;
-		stepTo[s] = to;
-		stepping[s] = true;
-		return true;
-	}
-}
-
-void stepStop(){
-	stepReset("all", s);
-}
-
-void stepReset(int s, char type){
-	if(type == "current") 	stepCurrent[s] = 0;
-	if(type == "begin") 		stepFrom[s] = 0;
-	if(type == "target") 		stepTo[s] = 0;
-	if(type == "distance") 	stepDistance[s] = 0;
-	if(type == "stepping") 	stepping[s] = false;
-	if(type == "all") {
-		stepCurrent[s] = 0;
-		stepFrom[s] = 0;
-		stepTo[s] = 0;
-		stepDuration[s] = 0;
-		stepIndex[s] = 0;
-		stepMillis[s] = 0;
-		stepping[s] = false;
-	}
-}
-
-void stepResetAll(){
-	for(int s=0;s<NUMBER_STRINGS;s++) { stepReset(s); }
-}
-
-void stepSet(char type, int target, int s){
-	if(type == "current") 	stepCurrent[s] = target;
-	if(type == "begin") 		stepFrom[s] = target;
-	if(type == "target") 		stepTo[s] = target;
-	if(type == "distance") 	stepDistance[s] = target;
-	if(type == "stepping") 	stepping[s] = target;
+void setupPhotocells(){
+	pinsPC[0] = PINS_PC_ONE;
+	pinsPC[1] = PINS_PC_TWO;
+	pinsPC[2] = PINS_PC_THREE;
+	pinsPC[3] = PINS_PC_FOUR;
+	pinsPC[4] = PINS_PC_FIVE;
+	pinsPC[5] = PINS_PC_SIX;
+	pinsPC[6] = PINS_PC_SEVEN;
 }
 
 /**************************************
@@ -300,23 +242,8 @@ The tiny big section for most desired feature
 //*************** RANGE FINDERS: SETUP PINS ***************//
 
 // SIMPLIFY!, memory hog...
-int pinsRangeTrigger[NUMBER_STRINGS];
-		pinsRangeTrigger[0] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[1] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[2] = PINS_RANGE_TRIG_ONE;
-		pinsRangeTrigger[3] = PINS_RANGE_TRIG_TWO;
-		pinsRangeTrigger[4] = PINS_RANGE_TRIG_TWO;
-		pinsRangeTrigger[5] = PINS_RANGE_TRIG_TWO;
-		pinsRangeTrigger[6] = PINS_RANGE_TRIG_TWO;
-		
-int pinsRangeEcho[NUMBER_STRINGS];
-		pinsRangeEcho[0] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[1] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[2] = PINS_RANGE_ECHO_ONE;
-		pinsRangeEcho[3] = PINS_RANGE_ECHO_TWO;
-		pinsRangeEcho[4] = PINS_RANGE_ECHO_TWO;
-		pinsRangeEcho[5] = PINS_RANGE_ECHO_TWO;
-		pinsRangeEcho[6] = PINS_RANGE_ECHO_TWO;
+uint8_t pinsRangeTrigger[NUMBER_STRINGS];
+uint8_t pinsRangeEcho[NUMBER_STRINGS];
 
 //*************** RANGE FINDERS: SETUP PINS FOR INPUT AND OUTPUT ***************//
 long rangeMillisSince[NUMBER_STRINGS], rangeMillisLast[NUMBER_STRINGS];
@@ -324,8 +251,15 @@ long rangeMillisSince[NUMBER_STRINGS], rangeMillisLast[NUMBER_STRINGS];
 /* This setups up the range finders */
 void setupRange(){
 	for(int s=0;s<NUMBER_STRINGS;s++){
-		pinMode(pinsRangeTrigger, OUTPUT);
-		pinMode(pinsRangeEcho, INPUT);
+		if(s<4) {
+			pinsRangeTrigger[s] = uint8_t(PINS_RANGE_TRIG_ONE);
+			pinsRangeEcho[s] = uint8_t(PINS_RANGE_ECHO_ONE);
+		} else {
+			pinsRangeTrigger[s] = uint8_t(PINS_RANGE_TRIG_TWO);
+			pinsRangeEcho[s] = uint8_t(PINS_RANGE_ECHO_TWO);
+		}
+		pinMode(pinsRangeTrigger[s], OUTPUT);
+		pinMode(pinsRangeEcho[s], INPUT);
 		rangeMillisLast[s] = millis();
 	}
 }
@@ -409,7 +343,8 @@ void pollMode(){
 	  if (buttonState != lastButtonState) {
 	    // if the state has changed, increment the counter
 	    if (buttonState == HIGH) {
-				setMode();
+				// setMode();
+				//DO!
 	    } 
 			//Ohterwise do nothing.
 	  }
@@ -431,7 +366,7 @@ void sendMidi(){
 	switch( mode ){
 		
 		case 1: //toggle
-			for(int s = 0; s < NUMBER_STRINGS; s__){
+			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s]) {
 					if(midiStage[s]) { //is presently off
 						Midi_Send(NOTEON, stringNote[s], stringRange[s]); 
@@ -447,7 +382,7 @@ void sendMidi(){
 			}
 			break;
 		default: //momentary
-			for(int s = 0; s < NUMBER_STRINGS; s__){
+			for(int s = 0; s < NUMBER_STRINGS; s++){
 				if(stringTriggered[s] && !midiStage[s]) {
 					Midi_Send(NOTEON, stringNote[s], stringRange[s]);
 					Midi_Send(0xB0, 17, stringRange[s]);
@@ -468,55 +403,47 @@ void sendMidi(){
 }
 
 void setupMidi(){
-	for(int s=0;s>NUMBER_STRINGS;s++){ holding[s] = false; }
+	for(int s=0;s>NUMBER_STRINGS;s++){ stringTriggered[s] = false; }
 }
 
 void midiLoopback(){ }
 		
 void pollSensors(){
-	boolean tripped = false;
 	pollAmbientLight();
 	for(int s=0;s<NUMBER_STRINGS;s++) {
 		if( pollString(s) ) { //does a bunch of math, sets some stuff and returns true/false for each string.
 			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
 			setStringRange(s);
-			tripped = true;
 			safetySecond(s, false);
+			// if(stringTriggered[s]) 
 		} else {
 			safetySecond(s, true);
 		}
 	}
-	//
-	if(tripped) 	{ active = true; lastInteraction = millis(); }
-	else 					{ active = false; }
+	
 	//
 }
+
+int PCThreshAdjusted, subtractAmbience;
 
 boolean pollString(int s){
 	boolean triggered;
-	int now = millis();
+	long now = millis();
 	PCValues[s] = analogRead(pinsPC[s]);
-	if(!stringActivatedTime[s]) {
-		stringActivatedTime[s] = now;
-	}
 	PCThreshAdjusted = LASER_PC_THRESH-subtractAmbience; //subtract ambience from Threshold (which is taken in complete darkness)
-	triggered = ( PCValues[s] < PCThreshAdjusted );
-	if(stringActivatedTime[s] && !triggered) 	{//If it ewas activated, it's not anymore.
-		stringActivatedTime[s] = 0; 	
-		stringTriggered[s] = false;
-	} 
-	else if(!stringActivatedTime[s] && triggered){ //It's just been activated, for the very first time (as long as we know.)
+	stringTriggered[s] = ( PCValues[s] < PCThreshAdjusted );
+	if(!stringTriggered[s]) 	{ stringActivatedTime[s] = 0; stepStop(s); } //It's not triggered.
+	else if(!stringActivatedTime[s] && stringTriggered[s]){ //It's just been activated, for the very first time (as long as we know.)
 		stringActivatedTime[s] = now; 
-		stringTriggered[s] = true; 
-	} else {
-		// presently triggered. WAIT?
+		lastInteraction = now;
 	}
-	return triggered;
+	return stringTriggered[s];
 }
 
 int setStringRange(int s){
-	range = getStringRange(s);
-	stringRange[s] = (!stepping[s] || ) ? stringRange[s] : step(s, stringRange[s], range);
+	// int range = getStringRange(s);
+	// stringRange[s] = (!stepping[s]) ? range : step(s, stringRange[s], range);
+	stringRange[s] = getStringRange(s);
 }
 
 int getStringRange(int s){
@@ -528,56 +455,50 @@ int limitRange(int range){
 	return (range > RANGE_MAX) ? RANGE_MAX : range;
 }
 
-int pinsPC[7];
-		pinsPC[0] = PINS_PC_ONE;
-		pinsPC[1] = PINS_PC_TWO;
-		pinsPC[2] = PINS_PC_THREE;
-		pinsPC[3] = PINS_PC_FOUR;
-		pinsPC[4] = PINS_PC_FIVE;
-		pinsPC[5] = PINS_PC_SIX;
-		pinsPC[6] = PINS_PC_SEVEN;
-		
-int PCThreshAdjusted;
-
-int knobValues[3];
-int knobRawValuesCache[3];
+int knobValue[3];
+int knobRawValueCache[3];
 int knobPollEvery = 100;
 int knobPollLast = millis();
 
+
+
 void setupKnobs(){
-	pinMode(pinsKnob[s], OUTPUT);
-	setupKnobLights()
+	pinMode(PINS_KNOB_OCTAVE, OUTPUT);
+	pinMode(PINS_KNOB_NOTE, OUTPUT);
+	pinMode(PINS_KNOB_SCALE, OUTPUT);
+	setupKnobLights();
 }
 
 void pollKnobs(){
 	long now = millis();
 	if(now-knobPollLast>knobPollEvery) {
 		boolean tripped = false;
-		for(int k=0;k<NUMBER_KNOBS;s++) {
-			knobRawValues[k] = analogRead(pinsKnob[k]) / 8; // convert value to value 0-127
-		}
 		
-		int n = (knobRawValues[0] != knobRawValuesCache[0]));
-		int o = (knobRawValues[1] != knobRawValuesCache[1]));
-		int s = (knobRawValues[2] != knobRawValuesCache[2]));
+		knobRawValue[0] = analogRead(PINS_KNOB_OCTAVE) / 8;
+		knobRawValue[1] = analogRead(PINS_KNOB_NOTE) / 8;
+		knobRawValue[2] = analogRead(PINS_KNOB_SCALE) / 8;
 		
-		tripped = (n || o || s)
+		int n = (knobRawValue[0] != knobRawValueCache[0]);
+		int o = (knobRawValue[1] != knobRawValueCache[1]);
+		int s = (knobRawValue[2] != knobRawValueCache[2]);
+		
+		tripped = (n || o || s);
 		
 		if(tripped) {		
-			int note = (n) ? NORMALIZE(knobValue[0], 0, 1024, 1, 12) : knobRawValuesCache[0];
-			int octave = (o) ? NORMALIZE(knobValue[1], 0, 1024, 0, 7) : knobRawValuesCache[1];
-			int scale = (s) ? NORMALIZE(knobValue[2], 0, 1024, 0, 12) : knobRawValuesCache[2];
+			int note = (n) ? NORMALIZE(knobRawValue[0], 0, 1024, 1, 12) : knobValue[0];
+			int octave = (o) ? NORMALIZE(knobRawValue[1], 0, 1024, 0, 7) : knobValue[1];
+			int scale = (s) ? NORMALIZE(knobRawValue[2], 0, 1024, 0, 12) : knobValue[2];
 
 			setBaseNote(octave*12+note);
 			setHarpScale(scale);
 	
-			knobValues[0] = note; 
-			knobValues[1] = octave; 
-			knobValues[2] = scale;
+			knobValue[0] = note; 
+			knobValue[1] = octave; 
+			knobValue[2] = scale;
 			
 			refreshLights();
 	
-			knobRawValuesCache = knobRawValues;
+			memcpy(knobRawValueCache, knobRawValue, 3);
 		}
 	}
 }
@@ -589,29 +510,29 @@ void setupKnobLights(){
 	knobLights.show();
 }
 
-void refreshLights(int note, int octave, int scale){ //don't need note...
+void refreshLights(){ //don't need note...
 
 	//note
-	nR = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 0, 255); 
-	nB = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 255, 0); 
-	nRGB = color(nR, 0, nB); //From Blue-Red, entire scale. Changes color when octave changes color.
+	int nR = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 0, 255); 
+	int nB = NORMALIZE(baseNote, MIDI_NOTE_LOW, MIDI_NOTE_HIGH, 255, 0); 
+	uint32_t nRGB = color(nR, 0, nB); //From Blue-Red, entire scale. Changes color when octave changes color.
 	
 	//octave
-	oR = NORMALIZE(knobValues[1], 0, 7, 0, 255);
-	oB = NORMALIZE(knobValues[1], 0, 7, 255, 0); 
-	oRGB = color(oR, 0, oB); //From Blue-Red
+	int oR = NORMALIZE(knobValue[1], 0, 7, 0, 255);
+	int oB = NORMALIZE(knobValue[1], 0, 7, 255, 0); 
+	uint32_t oRGB = color(oR, 0, oB); //From Blue-Red
 	
 	//scale
-	sR = NORMALIZE(knobValues[2], 0, 12, 50, 10);
-	sB = NORMALIZE(knobValues[2], 0, 12, 120, 40);
-	sG = NORMALIZE(knobValues[2], 0, 12, 100, 255);
-	sRGB = color(sR, sG, sB); //From Don't know. to who knows.
+	int sR = NORMALIZE(knobValue[2], 0, 12, 50, 10);
+	int sB = NORMALIZE(knobValue[2], 0, 12, 120, 40);
+	int sG = NORMALIZE(knobValue[2], 0, 12, 100, 255);
+	uint32_t sRGB = color(sR, sG, sB); //From Don't know. to who knows.
 	
 	//Happy Pixels
-	strip.setPixelColor(0, nRGB);
-	strip.setPixelColor(1, oRGB);
-	strip.setPixelColor(2, sRGB);
-	strip.show();
+	knobLights.setPixelColor(0, nRGB);
+	knobLights.setPixelColor(1, oRGB);
+	knobLights.setPixelColor(2, sRGB);
+	knobLights.show();
 	
 }
 
@@ -631,9 +552,6 @@ uint32_t color(byte r, byte g, byte b)
 // Chords
 
 // **** **** **********
-
-int baseNote = DEFAULT_BASE_NOTE;
-int harpScale = DEFAULT_SCALE;
 
 void setBaseNote(int n){
  baseNote = n;
@@ -810,14 +728,14 @@ boolean checkIdle(){
 
 // **** **** **********
 
-int subtractAmbience = 0;
+// int subtractAmbience = 0;
 int ambientPollEvery = 1000*3;
 int ambientPollLast = millis();
 
 void pollAmbientLight(){
 	long now = millis();
 	if(now-ambientPollLast>ambientPollEvery) {
-		subtractAmbience = analogRead(PINS_AMBIENT);
+		subtractAmbience = analogRead(PINS_PC_AMBIENT);
 	}
 }
 
@@ -842,15 +760,109 @@ char button(char button_num)
   return (!(digitalRead(button_num)));
 }
 
+/**************************************
+**
+STEPPER
+Oh shit, I wanted to avoid this. le sigh
+**
+***************************************/
+
+int stepIndex[8];
+int stepNumber = 14;
+int stepDuration = 1000;
+int stepEvery = stepDuration/stepNumber;
+// boolean stepping[NUMBER_STRINGS];
+//
+int stepTo[NUMBER_STRINGS];
+int stepFrom[NUMBER_STRINGS];
+int stepCurrent[NUMBER_STRINGS];
+int stepDistance[NUMBER_STRINGS];
+int stepMillis[NUMBER_STRINGS];
+bool stepping[NUMBER_STRINGS];
+
+#define STEPPER_THRESHOLD 50 //Must be more than this big of a gap to 
+
+void setupStepper(){
+	memset(stepping, false, NUMBER_STRINGS);
+}
+
+int step(int s, int from, int to){
+	long now = millis();
+	if(stepping[s]){
+		if(now-stepMillis[s] > stepEvery) { //is it time to do a step
+			if(stepIndex[s] < stepNumber) { //have we finished our steps
+				stepDistance[s] = (stepFrom[s] - stepTo[s]) / stepNumber;
+				stepCurrent[s] = stepDistance[s] * (stepIndex[s]+1);
+				stepMillis[s] = now;
+				stepIndex[s]++;
+				return stepCurrent[s];
+			} else { //give them their number, and make sure it doesn't happen again.
+				stepping[s] = false;
+				stepReset(s, "all");
+				stepIndex[s] = -1; //this flags that it has already been completed.
+				return to;
+			}
+		}
+	} else { //First step!
+		if(!stepStart(s, from, to)) return to; //If the gap isn't big enough, should have never gotten here but still.
+	}
+}
+
+boolean stepStart(int s, int from, int to){
+	if(stepIndex[s] == -1) return false; 
+	stepReset(s, "all");
+	int difference = to-from;
+	if(difference < 0) difference=difference*1;
+	if(difference > STEPPER_THRESHOLD) {
+		stepFrom[s] = from;
+		stepTo[s] = to;
+		stepping[s] = true;
+		return true;
+	} else {
+		stepReset(s, "all");
+	}
+}
+
+void stepStop(int s){
+	stepReset(s, "all");
+}
+
+void stepReset(int s, const char* type){
+	if(type == "current") 	stepCurrent[s] = 0;
+	if(type == "begin") 		stepFrom[s] = 0;
+	if(type == "target") 		stepTo[s] = 0;
+	if(type == "distance") 	stepDistance[s] = 0;
+	if(type == "stepping") 	stepping[s] = false;
+	if(type == "all") {
+		stepCurrent[s] = 0;
+		stepFrom[s] = 0;
+		stepTo[s] = 0;
+		stepIndex[s] = 0;
+		stepMillis[s] = 0;
+		stepping[s] = false;
+	}
+}
+
+void stepResetAll(int s){
+	for(int s=0;s<NUMBER_STRINGS;s++) { stepReset(s, "all"); }
+}
+
+void stepSet(const char* type, int target, int s){
+	if(type == "current") 	stepCurrent[s] = target;
+	if(type == "begin") 		stepFrom[s] = target;
+	if(type == "target") 		stepTo[s] = target;
+	if(type == "distance") 	stepDistance[s] = target;
+	if(type == "stepping") 	stepping[s] = target;
+}
+
+
 //*********************
 
 // Debugging
 
 // **** **** **********
-
 long debugLast = millis();
 int debugEvery = 7*1000;
-
 void debug(){
 	
 	long now = millis();
@@ -867,14 +879,14 @@ void debug(){
 			Serial.print("Note: "); Serial.println(stringNote[s]);
 			Serial.print("Midi Stage: "); Serial.println(midiStage[s]);
 			Serial.print("Triggered?: "); Serial.println(stringTriggered[s]);
-			Serial.print("Holding: "); Serial.println(holding[s]);
+			Serial.print("Holding: "); Serial.println(stringTriggered[s]);
 			Serial.print("Photocell: "); Serial.println(PCValues[s]);
 			Serial.print("Range: "); Serial.println(stringRange[s]);
 			Serial.print("Range (Raw Values): "); Serial.println(rangeValues[s]);
 		}
 		
 		for(int k=0;k<3;k++) {
-			Serial.print("Knob: "); Serial.println(knobRawValues[k]);
+			Serial.print("Knob: "); Serial.println(knobRawValue[k]);
 		}
 		
 		Serial.print("Last Interaction: "); Serial.println(lastInteraction);
@@ -894,18 +906,16 @@ void debug(){
 		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
 		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
 		Serial.print("RANGE 2 ECHO: ");				Serial.println(PINS_RANGE_ECHO_TWO);
-		Serial.print("PHOTOCELL 1: "););			Serial.println(PINS_PC_ONE);
+		Serial.print("PHOTOCELL 1: ");				Serial.println(PINS_PC_ONE);
 		Serial.print("PHOTOCELL 2: ");				Serial.println(PINS_PC_TWO);
 		Serial.print("PHOTOCELL 3: ");				Serial.println(PINS_PC_THREE);
-		Serial.print("PHOTOCELL 4: "););			Serial.println(PINS_PC_FOUR);
+		Serial.print("PHOTOCELL 4: ");				Serial.println(PINS_PC_FOUR);
 		Serial.print("PHOTOCELL 5: ");				Serial.println(PINS_PC_FIVE);
 		Serial.print("PHOTOCELL 6: ");				Serial.println(PINS_PC_SIX);
 		Serial.print("PHOTOCELL 7: ");				Serial.println(PINS_PC_SEVEN);
-	
-		Serial.print("MODE: ");
-		Serial.println(PINS_MODE);
-	
-		debugLast = now();
+		Serial.print("MODE: ");								Serial.println(PINS_MODE);
+		
+		debugLast = now;
 	}
 
 }
