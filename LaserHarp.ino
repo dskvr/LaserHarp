@@ -5,47 +5,47 @@
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
-#define NUMBER_STRINGS  			7
-#define NUMBER_SENSORS  			2
-#define NUMBER_RANGE_FINDERS	2
+#define NUMBER_STRINGS  				7
+#define NUMBER_PHOTOCELLS  			7
+#define NUMBER_RANGE_FINDERS		2
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 PINS PINS PINS
 //*************** LASER SWITCH PINS ***************/
-#define PINS_LASER_ONE 			28
-#define PINS_LASER_TWO 			30
-#define PINS_LASER_THREE 		32
-#define PINS_LASER_FOUR 		28
-#define PINS_LASER_FIVE 		30
-#define PINS_LASER_SIX	 		32
-#define PINS_LASER_SEVEN		28
+#define PINS_LASER_ONE 					28
+#define PINS_LASER_TWO 					30	
+#define PINS_LASER_THREE 				32
+#define PINS_LASER_FOUR 				28
+#define PINS_LASER_FIVE 				30
+#define PINS_LASER_SIX	 				32
+#define PINS_LASER_SEVEN				28
 //*************** STRING RANGE FINDERS ***************//
 //								TRIGGER ***************//
-#define PINS_RANGE_TRIG_ONE 	23 // Trigger Pin
-#define PINS_RANGE_TRIG_TWO 	25 // Trigger Pin
+#define PINS_RANGE_TRIG_ONE 		23 // Trigger Pin
+#define PINS_RANGE_TRIG_TWO 		25 // Trigger Pin
 //								ECHO ***************//
-#define PINS_RANGE_ECHO_ONE 	22
-#define PINS_RANGE_ECHO_TWO 	24
+#define PINS_RANGE_ECHO_ONE 		22
+#define PINS_RANGE_ECHO_TWO 		24
 //*************** USERRANGE TRIG & ECHO ***************//
-#define PINS_USER_RANGE_TRIG 	27
-#define PINS_USER_RANGE_ECHO	26
+#define PINS_USER_RANGE_TRIG 		27
+#define PINS_USER_RANGE_ECHO		26
 //*************** PHOTOCELLS ***************//
-#define PINS_PC_ONE 					8
-#define PINS_PC_TWO 					9 
-#define PINS_PC_THREE 				10
-#define PINS_PC_FOUR 					8
-#define PINS_PC_FIVE 					9 
-#define PINS_PC_SIX		 				10
-#define PINS_PC_SEVEN		 			10
-#define PINS_PC_AMBIENT		 		10
+#define PINS_PC_ONE 						8
+#define PINS_PC_TWO 						9 
+#define PINS_PC_THREE 					10
+#define PINS_PC_FOUR 						8
+#define PINS_PC_FIVE 						9 
+#define PINS_PC_SIX		 					10
+#define PINS_PC_SEVEN		 				10
+#define PINS_PC_AMBIENT		 			10
 //*************** KNOB PINS ***************//
 #define PINS_KNOB_OCTAVE 				0
 #define PINS_KNOB_NOTE					1
 #define PINS_KNOB_SCALE  				2
 //*************** LIGHT PINS ***************//
 #define PINS_LIGHTS_DATA 				0
-#define  PINS_LIGHTS_CLOCK			1
+#define PINS_LIGHTS_CLOCK				1
 //*************** MODE BUTTON PIN ***************//
-#define PINS_MODE 						11
+#define PINS_MODE 							11
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
 //*************** HELPERS ***************/
@@ -219,9 +219,6 @@ Photocells
 The tiny big section for most desired feature
 **
 ***************************************/
-
-
-
 void setupPhotocells(){
 	pinsPC[0] = PINS_PC_ONE;
 	pinsPC[1] = PINS_PC_TWO;
