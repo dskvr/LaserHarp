@@ -295,7 +295,7 @@ void setupRange(){
 }
 
 /* This pings the range finders, which sends an ultra sonic wave, pauses and then recieves it microseconds later */
-void pingRange(int s){
+void pollRange(int s){
 	rangeMillisSince[s] = millis() - rangeMillisLast[s];
 	if(rangeMillisSince[s] > THRESHOLD_PING_RANGE) {
 		if(DEBUG) LOG(pinsRangeTrigger[s], "(PING) Range for String/Laser ", s);
@@ -305,11 +305,11 @@ void pingRange(int s){
 	 	delayMicroseconds(10); 
 	 	digitalWrite(pinsRangeTrigger[s], LOW);
 	 	long duration = pulseIn(pinsRangeEcho[s], HIGH);
-	  rangeRawValues[s] = microsecondsToCentimeters(duration);
+	  rangeRawValue[s] = microsecondsToCentimeters(duration);
 		if(DEBUG) LOG(pinsRangeEcho[s], "(PING) Range for String/Laser ", s);
 		rangeMillisLast[s] = millis();
 	}
-	rangeMidiValues[s] = convertDistanceToMidi(rangeRawValues[s]);
+	rangeMidiValues[s] = convertDistanceToMidi(rangeRawValue[s]);
 }
 
 int getStringRange(int s){
@@ -322,6 +322,14 @@ int convertDistanceToMidi(int distance){
 
 int limitRange(int range){
 	return (range > RANGE_MAX) ? RANGE_MAX : range;
+}
+
+long microsecondsToCentimeters(long microseconds)
+{
+  // The speed of sound is 340 m/s or 29 microseconds per centimeter.
+  // The ping travels out and back, so to find the distance of the
+  // object we take half of the distance travelled.
+  return microseconds / 29 / 2;
 }
 
 /**************************************
@@ -466,11 +474,10 @@ long lastPoll = millis();
 		
 void pollSensors(){
 	if(DEBUG) LOG(millis()-lastPoll, "(Polling Sensors) Cycling every");
-	pollAmbientLight();
 	for(int s=0;s<NUMBER_STRINGS;s++) {
 		if( pollString(s) ) { //does a bunch of math, sets some stuff and returns true/false for each string.
-			pingRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
-			setStringRange(s);
+			pollRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
+			pollAmbientLight();
 			safetySecond(s, false);
 			// if(stringTriggered[s]) 
 		} else {
@@ -482,13 +489,12 @@ void pollSensors(){
 }
 
 boolean pollString(int s){
-	boolean triggered;
-	long now = millis();
 	PCValues[s] = analogRead(pinsPC[s]);
 	PCThreshAdjusted = LASER_PC_THRESH-subtractAmbience; //subtract ambience from Threshold (which is taken in complete darkness)
 	stringTriggered[s] = ( PCValues[s] < PCThreshAdjusted );
-	if(!stringTriggered[s]) 	{ stringActivatedTime[s] = 0; stepStop(s); } //It's not triggered.
+	if(!stringTriggered[s]) 	{ stringActivatedTime[s] = 0; stepStop(s); return false; } //It's not triggered.
 	else if(!stringActivatedTime[s] && stringTriggered[s]){ //It's just been activated, for the very first time (as long as we know.)
+		long now = millis();
 		stringActivatedTime[s] = now; 
 		lastInteraction = now;
 	}
@@ -499,8 +505,6 @@ int knobValue[3];
 int knobRawValueCache[3];
 int knobPollEvery = 100;
 int knobPollLast = millis();
-
-
 
 void setupKnobs(){
 	pinMode(PINS_KNOB_OCTAVE, OUTPUT);
