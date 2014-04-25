@@ -79,7 +79,7 @@ int PCValues[NUMBER_STRINGS];
 int rangeRawValue[NUMBER_STRINGS];
 int rangeMidiValue[NUMBER_STRINGS];
 int midiStage[NUMBER_STRINGS];
-boolean stringTriggered[NUMBER_STRINGS];
+boolean stringState[NUMBER_STRINGS];
 boolean holding[NUMBER_STRINGS];
 
 int knobRawValue[3];
@@ -309,7 +309,7 @@ void pollRange(int s){
 		if(DEBUG) LOG(pinsRangeEcho[s], "(PING) Range for String/Laser ", s);
 		rangeMillisLast[s] = millis();
 	}
-	rangeMidiValues[s] = convertDistanceToMidi(rangeRawValue[s]);
+	rangeMidiValue[s] = convertDistanceToMidi(rangeRawValue[s]);
 }
 
 int getStringRange(int s){
@@ -351,18 +351,18 @@ void safetySecond(int s, boolean reset){
 	
 	long now = millis();
 	
-	if(stringTriggered[s] && laserState[s]) {
+	if(stringState[s] && laserState[s]) {
 		stringTrigDur[s] = now-stringActivatedTime[s];
-	}	else if(!stringTriggered[s]) {
+	}	else if(!stringState[s]) {
 		stringTrigDur[s] = 0;
 	}
 	
 	if(safetyOn[s]) {
 		if(now-safetyOn[s]>1*1000) { //Put it on after 1 second
-			if(now-safetyOn[s]>1*1000+5 && stringTriggered[s] && laserState[s]) laserOff(s); //Shortly after, check if there is something still obstructing the laser.
+			if(now-safetyOn[s]>1*1000+5 && stringState[s] && laserState[s]) laserOff(s); //Shortly after, check if there is something still obstructing the laser.
 			else laserOn(s); //First... turn the laser on
 			
-			if(now-safetyOn[s]>5*1000+100 && !stringTriggered[s] && laserState[s]){ //If the obstructure is no longer there, it continues as normal. 
+			if(now-safetyOn[s]>5*1000+100 && !stringState[s] && laserState[s]){ //If the obstructure is no longer there, it continues as normal. 
 				laserOn(s);
 				safetyOn[s]=0;
 			}
@@ -423,18 +423,18 @@ void sendMidi(){
 	switch( mode ){
 		case 1: //toggle
 			for(int s = 0; s < NUMBER_STRINGS; s++){
-				if(stringTriggered[s]) {
+				if(stringState[s]) {
 					if(DEBUG) LOG(s, "String Triggered (Toggle Mode)");
 					if(!midiStage[s]) { //is presently off
 						Midi_Send(NOTEON, stringNote[s], rangeMidiValue[s]); 
 						Midi_Send(0xB0, 22+s, stringRange[s]); 
 						midiStage[s] = 1; //on
-						stringTriggered[s] = false;
+						stringState[s] = false;
 						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note ON", s);
 					} else { //is presently on
 						Midi_Send(NOTEOFF, stringNote[s], rangeMidiValue[s]);
 						midiStage[s] = 0; //off
-						stringTriggered[s] = false;
+						stringState[s] = false;
 						if(DEBUG) LOG(stringNote[s], "(toggle) Sending Note OFF", s);
 					}
 				} else {
@@ -445,27 +445,29 @@ void sendMidi(){
 			break;
 		default: //momentary
 			for(int s = 0; s < NUMBER_STRINGS; s++){
-				if(stringTriggered[s] && midiStage[s]==0) {
+				if(stringState[s] && midiStage[s]==0) {
 					Midi_Send(NOTEON, stringNote[s], rangeMidiValue[s]);
 					Midi_Send(0xB0, 22+s, rangeMidiValue[s]);
 					midiStage[s] = ON;
-					stringTriggered[s] = false;
+					stringState[s] = false;
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note ON", s);
-				} else if( !stringTriggered[s] && midiStage[s]) { //is not trigged but current stage is ON or WAIT. 
+				} else if( !stringState[s] && midiStage[s]) { //is not trigged but current stage is ON or WAIT. 
 					Midi_Send(NOTEOFF, stringNote[s], rangeMidiValue[s]);
 					midiStage[s] = OFF;
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Sending Note OFF", s);
-				} else if(stringTriggered[s] && midiStage[s] == ON) {
+				} else if(stringState[s] && midiStage[s] == ON) {
 					midiStage[s] = WAIT;
 					Midi_Send(0xB0, 22+s, rangeMidiValue[s]);
 					if(DEBUG) LOG(stringNote[s], "(Momentary) Waiting...", s);
+				} else if(stringState[s] && midisStage[s] == WAIT) {
+					Midi_Send(0xB0, 22+s, rangeMidiValue[s]);
 				}
 			}
 	}
 }
 
 void setupMidi(){
-	for(int s=0;s>NUMBER_STRINGS;s++){ stringTriggered[s] = false; }
+	for(int s=0;s>NUMBER_STRINGS;s++){ stringState[s] = false; }
 }
 
 void midiLoopback(){ }
@@ -479,7 +481,7 @@ void pollSensors(){
 			pollRange(s); //This will create latency, so it's only running every 50 milliseconds. 38 microseconds * 7 is a fraction of a Milli, but still.
 			pollAmbientLight();
 			safetySecond(s, false);
-			// if(stringTriggered[s]) 
+			// if(stringState[s]) 
 		} else {
 			safetySecond(s, true);
 		}
@@ -491,14 +493,15 @@ void pollSensors(){
 boolean pollString(int s){
 	PCValues[s] = analogRead(pinsPC[s]);
 	PCThreshAdjusted = LASER_PC_THRESH-subtractAmbience; //subtract ambience from Threshold (which is taken in complete darkness)
-	stringTriggered[s] = ( PCValues[s] < PCThreshAdjusted );
-	if(!stringTriggered[s]) 	{ stringActivatedTime[s] = 0; stepStop(s); return false; } //It's not triggered.
-	else if(!stringActivatedTime[s] && stringTriggered[s]){ //It's just been activated, for the very first time (as long as we know.)
+	stringState[s] = ( PCValues[s] < PCThreshAdjusted );
+	if(!stringState[s]) 	{ stringActivatedTime[s] = 0; stepStop(s); } //It's not triggered.
+	else if(!stringActivatedTime[s] && stringState[s]){ //It's just been activated, for the very first time (as long as we know.)
+		if(DEBUG) LOG(s, "(State) Triggered");
 		long now = millis();
 		stringActivatedTime[s] = now; 
 		lastInteraction = now;
 	}
-	return stringTriggered[s];
+	return stringState[s];
 }
 
 int knobValue[3];
@@ -529,7 +532,9 @@ void pollKnobs(){
 		tripped = (n || o || s);
 		
 		if(tripped) {		
+			
 			if(DEBUG) LOG(3, "(Knobs) Value has changed");
+			
 			int note = (n) ? NORMALIZE(knobRawValue[0], 0, 1024, 1, 12) : knobValue[0];
 			int octave = (o) ? NORMALIZE(knobRawValue[1], 0, 1024, 0, 7) : knobValue[1];
 			int scale = (s) ? NORMALIZE(knobRawValue[2], 0, 1024, 0, 12) : knobValue[2];
@@ -540,6 +545,10 @@ void pollKnobs(){
 			knobValue[0] = note; 
 			knobValue[1] = octave; 
 			knobValue[2] = scale;
+			
+			if(DEBUG) LOG(note, "(Knob 1) Note:");
+			if(DEBUG) LOG(octave, "(Knob 2) Octave:");
+			if(DEBUG) LOG(octave, "(Knob 3) Scale:");
 			
 			refreshLights();
 	
@@ -599,11 +608,11 @@ uint32_t color(byte r, byte g, byte b)
 // **** **** **********
 
 void setBaseNote(int n){
- if(DEBUG) LOG(n, "(Notes) Setting Base Note");
+ if(DEBUG) LOG(n, "(Notes) Setting Basenote");
  baseNote = n;
  if(baseNote > MIDI_NOTE_HIGH) { baseNote = MIDI_NOTE_HIGH; }
  if(baseNote < MIDI_NOTE_LOW) { baseNote = MIDI_NOTE_LOW; }\
- if(DEBUG) LOG(baseNote, "(Notes) Base note set");
+ if(DEBUG) LOG(baseNote, "(Notes) Basenote set");
 }
 
 void setHarpScale(char scale){
@@ -615,6 +624,9 @@ void setHarpScale(char scale){
 void setScale(){	
 	if(DEBUG) LOG("harpscale", "(Notes) Setting scale.");
 	switch(harpScale){
+		
+		//TODO
+		//Increasing/decreasing scale?
 		
 		case 0: //W – W – H – W – W – W – H //ionian/major
 			stringNote[0] = baseNote;
@@ -799,19 +811,11 @@ void pollAmbientLight(){
 
 // **** **** **********
 
-int getRange(int s){ return digitalRead(stringRange[s]); }
-
 int NORMALIZE(int set, int rangeLow, int rangeHigh, int toMin, int toMax) { 
 	// toMin = toMin || 0;
 	// toMax = toMax || 1000;
 	int result = toMin + (set-rangeLow)*(toMax-toMin)/(rangeHigh-rangeLow);
 	return result;
-}
-
-
-char button(char button_num)
-{
-  return (!(digitalRead(button_num)));
 }
 
 /**************************************
@@ -954,8 +958,7 @@ void debugReport(){
 			Serial.println("       -~~~~~~~~~~~~~~~~~~~~~~");
 			Serial.print("Note: "); Serial.println(stringNote[s]);
 			Serial.print("Midi Stage: "); Serial.println(midiStage[s]);
-			Serial.print("Triggered?: "); Serial.println(stringTriggered[s]);
-			Serial.print("Holding: "); Serial.println(stringTriggered[s]);
+			Serial.print("Triggered?: "); Serial.println(stringState[s]);
 			Serial.print("Photocell: "); Serial.println(PCValues[s]);
 			Serial.print("Range: "); Serial.println(stringRange[s]);
 			Serial.print("Range (Raw Values): "); Serial.println(rangeRawValue[s]);
