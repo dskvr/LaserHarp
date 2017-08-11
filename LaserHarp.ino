@@ -2,14 +2,15 @@
 #include <Streaming.h>
 #include "SPI.h"
 #include "Adafruit_WS2801.h"
+
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 Constraints
 //*************** LASER SWITCH PINS ***************/
-#define DEBUG										false
-#define DEBUG_STATS							false
+#define DEBUG						false
+#define DEBUG_STATS					false
 #define NUMBER_STRINGS  				7
-#define NUMBER_PHOTOCELLS  			7
-#define NUMBER_RANGE_FINDERS		2
+#define NUMBER_PHOTOCELLS  				7
+#define NUMBER_RANGE_FINDERS				2
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 PINS PINS PINS
 //*************** LASER SWITCH PINS ***************/
@@ -21,21 +22,21 @@ PINS PINS PINS
 #define PINS_LASER_SIX	 				32
 #define PINS_LASER_SEVEN				28
 //*************** STRING RANGE FINDERS ***************//
-#define PINS_RANGE_TRIG_ONE 		23 // Trigger Pin
-#define PINS_RANGE_TRIG_TWO 		25 // Trigger Pin
-#define PINS_RANGE_ECHO_ONE 		22
-#define PINS_RANGE_ECHO_TWO 		24
+#define PINS_RANGE_TRIG_ONE 				23 // Trigger Pin
+#define PINS_RANGE_TRIG_TWO 				25 // Trigger Pin
+#define PINS_RANGE_ECHO_ONE 				22
+#define PINS_RANGE_ECHO_TWO 				24
 //*************** USERRANGE TRIG & ECHO ***************//
-#define PINS_USER_RANGE_TRIG 		27
-#define PINS_USER_RANGE_ECHO		26
+#define PINS_USER_RANGE_TRIG 				27
+#define PINS_USER_RANGE_ECHO				26
 //*************** PHOTOCELLS ***************//
-#define PINS_PC_ONE 						8
-#define PINS_PC_TWO 						9 
+#define PINS_PC_ONE 					8
+#define PINS_PC_TWO 					9 
 #define PINS_PC_THREE 					10
-#define PINS_PC_FOUR 						8
-#define PINS_PC_FIVE 						9 
-#define PINS_PC_SIX		 					10
-#define PINS_PC_SEVEN		 				10
+#define PINS_PC_FOUR 					8
+#define PINS_PC_FIVE 					9 
+#define PINS_PC_SIX		 			10
+#define PINS_PC_SEVEN		 			10
 #define PINS_PC_AMBIENT		 			10
 //*************** KNOB PINS ***************//
 #define PINS_KNOB_OCTAVE 				0
@@ -45,33 +46,36 @@ PINS PINS PINS
 #define PINS_LIGHTS_DATA 				0
 #define PINS_LIGHTS_CLOCK				1
 //*************** MODE BUTTON PIN ***************//
-#define PINS_MODE 							11
+#define PINS_MODE 					11
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 MIDI
 //*************** LIMITS ***************/
 #define MIDI_NOTE_LOW 					1
 #define MIDI_NOTE_HIGH 					115
 //*************** MIDI VALUES ***************/
-#define OFF 										0
-#define ON 											1
-#define WAIT 										2
-#define CONTINUOUS 							11
-#define NOTEON 									0x90
-#define NOTEOFF 								0x80
+#define OFF 						0
+#define ON 						1
+#define WAIT 						2
+#define CONTINUOUS 					11
+#define NOTEON 						0x90
+#define NOTEOFF 					0x80
+
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 RANGE
 //*************** LIMITS ***************/
-#define THRESHOLD_PING_RANGE	50
+#define THRESHOLD_PING_RANGE				50
+
 /*++++++++++++++++++++++++++++++++++++++++++++++++++
 INTERACTIVITY
 //*************** LIMITS ***************/
-#define IDLE_THRESHOLD 				30000
-#define RANGE_MAX 						114 //CHANGE!
-#define RANGE_MIN 						1	  //CHANGE!
-#define LASER_PC_THRESH 			600 //CHANGE!
+#define IDLE_THRESHOLD 					30000
+#define RANGE_MAX 					114 		//CHANGE!
+#define RANGE_MIN 					1	  	//CHANGE!
+#define LASER_PC_THRESH 				600 		//CHANGE!
 #define TOTAL_MODES 					3
-#define DEFAULT_BASE_NOTE 		60
+#define DEFAULT_BASE_NOTE 				60
 #define DEFAULT_SCALE					0
+
 //*************** DATA CACHE ***************//
 int stringRange[NUMBER_STRINGS];
 int stringNote[NUMBER_STRINGS];
@@ -89,24 +93,31 @@ int lastButtonState;
 boolean isIdle;
 boolean active = false;
 boolean booted = false;
+
 //*************** Stepper for range tweens ***************//
 boolean stepping[NUMBER_STRINGS];
+
 //*************** Midi Variables ***************//
 int action = ON; //1 =note off ; 2=note on ; 3= wait
 byte incomingByte;
 byte note;
 byte velocity;
 int pot;
+
 //*************** Pins ***************//
 uint8_t pinsPC[7];
 uint8_t pinsKnob[3];
+
 //*************** Music Math  ***************//
 int baseNote = DEFAULT_BASE_NOTE;
 int harpScale = DEFAULT_SCALE;
+
 //*************** Ambient Light Sensor (532nm sensitive)  ***************//
 int PCThreshAdjusted, subtractAmbience;
+
 //*************** Switch Modes!  ***************//
 int mode = 0; // 0 = momentary, 2 = on/off (sampler)
+
 //*************** Debugging  ***************//
 long debugLast = millis();
 int debugEvery = 7*1000;
@@ -132,6 +143,7 @@ void loop() {
 	sendMidi();    //Send midi signal. 
 	if(DEBUG) debugReport();
 }
+
 /**************************************
 **
 LASERS
@@ -972,28 +984,28 @@ void debugReport(){
 					
 		Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");	Serial.println(" ");
 		Serial.println("PINS");	Serial.println(" ");
-		Serial.print("TOTAL STRINGS:  "); 		Serial.println(NUMBER_STRINGS);
-		Serial.print("TOTAL RANGES: ");				Serial.println(NUMBER_RANGE_FINDERS);
-		Serial.print("LASER 1: ");						Serial.println(PINS_LASER_ONE);
-		Serial.print("LASER 2: ");						Serial.println(PINS_LASER_TWO);
-		Serial.print("LASER 3: ");						Serial.println(PINS_LASER_THREE);
-		Serial.print("LASER 4: ");						Serial.println(PINS_LASER_FOUR);
-		Serial.print("LASER 5: ");						Serial.println(PINS_LASER_FIVE);
-		Serial.print("LASER 6: ");						Serial.println(PINS_LASER_SIX);
-		Serial.print("LASER 7: ");						Serial.println(PINS_LASER_SEVEN);
-		Serial.print("RANGE 2 ECHO: ");				Serial.println(PINS_RANGE_ECHO_TWO);
-		Serial.print("PHOTOCELL 1: ");				Serial.println(PINS_PC_ONE);
-		Serial.print("PHOTOCELL 2: ");				Serial.println(PINS_PC_TWO);
-		Serial.print("PHOTOCELL 3: ");				Serial.println(PINS_PC_THREE);
-		Serial.print("PHOTOCELL 4: ");				Serial.println(PINS_PC_FOUR);
-		Serial.print("PHOTOCELL 5: ");				Serial.println(PINS_PC_FIVE);
-		Serial.print("PHOTOCELL 6: ");				Serial.println(PINS_PC_SIX);
-		Serial.print("PHOTOCELL 7: ");				Serial.println(PINS_PC_SEVEN);
-		Serial.print("RANGE 1 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_ONE);
-		Serial.print("RANGE 2 TRIGGER: ");		Serial.println(PINS_RANGE_TRIG_TWO);
-		Serial.print("RANGE 1 ECHO: ");				Serial.println(PINS_RANGE_ECHO_ONE);
+		Serial.print("TOTAL STRINGS:  "); 				Serial.println(NUMBER_STRINGS);
+		Serial.print("TOTAL RANGES: ");					Serial.println(NUMBER_RANGE_FINDERS);
+		Serial.print("LASER 1: ");					Serial.println(PINS_LASER_ONE);
+		Serial.print("LASER 2: ");					Serial.println(PINS_LASER_TWO);
+		Serial.print("LASER 3: ");					Serial.println(PINS_LASER_THREE);
+		Serial.print("LASER 4: ");					Serial.println(PINS_LASER_FOUR);
+		Serial.print("LASER 5: ");					Serial.println(PINS_LASER_FIVE);
+		Serial.print("LASER 6: ");					Serial.println(PINS_LASER_SIX);
+		Serial.print("LASER 7: ");					Serial.println(PINS_LASER_SEVEN);
+		Serial.print("RANGE 2 ECHO: ");					Serial.println(PINS_RANGE_ECHO_TWO);
+		Serial.print("PHOTOCELL 1: ");					Serial.println(PINS_PC_ONE);
+		Serial.print("PHOTOCELL 2: ");					Serial.println(PINS_PC_TWO);
+		Serial.print("PHOTOCELL 3: ");					Serial.println(PINS_PC_THREE);
+		Serial.print("PHOTOCELL 4: ");					Serial.println(PINS_PC_FOUR);
+		Serial.print("PHOTOCELL 5: ");					Serial.println(PINS_PC_FIVE);
+		Serial.print("PHOTOCELL 6: ");					Serial.println(PINS_PC_SIX);
+		Serial.print("PHOTOCELL 7: ");					Serial.println(PINS_PC_SEVEN);
+		Serial.print("RANGE 1 TRIGGER: ");				Serial.println(PINS_RANGE_TRIG_ONE);
+		Serial.print("RANGE 2 TRIGGER: ");				Serial.println(PINS_RANGE_TRIG_TWO);
+		Serial.print("RANGE 1 ECHO: ");					Serial.println(PINS_RANGE_ECHO_ONE);
 
-		Serial.print("MODE: ");								Serial.println(PINS_MODE);
+		Serial.print("MODE: ");						Serial.println(PINS_MODE);
 				
 		debugLast = now;
 	}
